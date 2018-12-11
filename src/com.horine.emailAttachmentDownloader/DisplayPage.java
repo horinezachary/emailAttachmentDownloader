@@ -76,6 +76,115 @@ public class DisplayPage {
     }
 
     private JMenuBar generateMenu(){
+        JMenuBar menubar = new JMenuBar();
+
+        //===FILE MENU====
+        menubar.add(generateFileMenu());
+
+        //===RUN MENU====
+        JMenu runMenu = new JMenu("Run");
+        menubar.add(runMenu);
+
+        JMenuItem run = new JMenuItem("Run Now");
+        run.addMouseListener(new MouseListener(){
+            @Override public void mouseClicked(MouseEvent e) {}
+            @Override public void mousePressed(MouseEvent e) {}
+            @Override public void mouseEntered(MouseEvent e) {}
+            @Override public void mouseExited(MouseEvent e)  {}
+            @Override public void mouseReleased(MouseEvent e) {
+                getter.fetch(settings.getKeywords());
+            }
+        });
+        //JCheckBoxMenuItem startup = new JCheckBoxMenuItem("Run at Startup");
+        runMenu.add(run);
+
+        //===HELP MENU====
+        JMenu helpMenu = new JMenu("Help");
+
+        JMenuItem help = new JMenuItem("Help");
+        JMenuItem gettingStarted = new JMenuItem("Getting Started");
+        JMenuItem faq = new JMenuItem("FAQ");
+        JMenuItem about = new JMenuItem("About this Software");
+
+        helpMenu.add(help);
+        helpMenu.add(gettingStarted);
+        helpMenu.add(faq);
+        helpMenu.addSeparator();
+        helpMenu.add(about);
+
+        menubar.add(helpMenu);
+
+        return menubar;
+    }
+
+    private JMenu generateFileMenu(){
+        JMenu filemenu = new JMenu("File");
+
+        //===IMPORT SETTINGS====
+        JMenuItem importSettings = new JMenuItem("Import Settings");
+        importSettings.addMouseListener(new MouseListener(){
+            @Override public void mouseClicked(MouseEvent e) {}
+            @Override public void mousePressed(MouseEvent e) {}
+            @Override public void mouseEntered(MouseEvent e) {}
+            @Override public void mouseExited(MouseEvent e)  {}
+            @Override public void mouseReleased(MouseEvent e) {
+                String file = chooseFile("settings.cfg",".cfg", "cfg");
+                if (file != null) {
+                    String oldPath = settings.getCfgFilepath();
+                    settings.setCfgFilepath(file);
+                    settings.getData();
+                    settings.setCfgFilepath(oldPath);
+                    settings.saveData();
+                }
+            }});
+        filemenu.add(importSettings);
+        //===EXPORT SETTINGS====
+        JMenuItem exportSettings = new JMenuItem("Export Settings");
+        exportSettings.addMouseListener(new MouseListener(){
+            @Override public void mouseClicked(MouseEvent e) {}
+            @Override public void mousePressed(MouseEvent e) {}
+            @Override public void mouseEntered(MouseEvent e) {}
+            @Override public void mouseExited(MouseEvent e)  {}
+            @Override public void mouseReleased(MouseEvent e) {
+                String file = chooseFile("export.cfg",".cfg", "cfg");
+                if (file != null) {
+                    String oldPath = settings.getCfgFilepath();
+                    settings.setCfgFilepath(file);
+                    settings.saveData();
+                    settings.setCfgFilepath(oldPath);
+                }
+            }});
+        filemenu.add(exportSettings);
+        filemenu.addSeparator();
+
+        //===SAVE FOLDER====
+        JMenuItem saveFolder = new JMenuItem("Picture Save Folder");
+        exportSettings.addMouseListener(new MouseListener(){
+            @Override public void mouseClicked(MouseEvent e) {}
+            @Override public void mousePressed(MouseEvent e) {}
+            @Override public void mouseEntered(MouseEvent e) {}
+            @Override public void mouseExited(MouseEvent e)  {}
+            @Override public void mouseReleased(MouseEvent e) {
+                String folder = chooseFolder();
+                if (folder != null) {
+                    settings.setSaveFolder(folder);
+                }
+            }});
+        filemenu.add(saveFolder);
+
+        //===PREFRENCES====
+        JMenuItem prefs = new JMenuItem("Prefrences");
+        filemenu.add(prefs);
+        prefs.addMouseListener(new MouseListener(){
+            @Override public void mouseClicked(MouseEvent e) {}
+            @Override public void mousePressed(MouseEvent e) {}
+            @Override public void mouseEntered(MouseEvent e) {}
+            @Override public void mouseExited(MouseEvent e)  {}
+            @Override public void mouseReleased(MouseEvent e) {
+                updatePrefrences();
+            }});
+
+        return filemenu;
     }
     }
 }
