@@ -186,5 +186,80 @@ public class DisplayPage {
 
         return filemenu;
     }
+
+    void updatePrefrences(){
+        JFrame settingsEdit = new JFrame();
+        settingsEdit.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+        settingsEdit.setSize(400,600);
+        settingsEdit.setLocation(500,300);
+        SpringLayout layout = new SpringLayout();
+        settingsEdit.setLayout(layout);
+
+        JLabel mailserverLabel = new JLabel("Mail Server: ");
+        JLabel emailLabel = new JLabel("Email: ");
+        JLabel passwordLabel = new JLabel("Password: ");
+
+        JTextField mailServer = new JTextField();
+        mailServer.setSize(100,30);
+        mailServer.setLocation(10,10);
+        mailServer.setText(settings.getPopHost());
+        JTextField email = new JTextField();
+        email.setSize(100,30);
+        email.setLocation(10, 50);
+        email.setText(settings.getAccount());
+        JPasswordField password = new JPasswordField();
+        password.setSize(100,30);
+        password.setLocation(10, 90);
+        password.setText(settings.getPassword());
+        JTextPane keywords = new JTextPane();
+        keywords.setSize(400,30);
+        keywords.setLocation(10,130);
+        //keywords.setBackground(new Color(5,5,50));
+        keywords.setText(settings.getKeywordString());
+
+        JButton save = new JButton("Save");
+        save.addActionListener(new ActionListener() {
+            @Override public void actionPerformed(ActionEvent e) {
+                settings.setPopHost(mailServer.getText());
+                settings.setAccount(email.getText());
+                settings.setPassword(password.getText());
+                settings.setKeywords(keywords.getText());
+                settingsEdit.dispose();
+            }});
+        JButton cancel = new JButton("Cancel");
+        cancel.addActionListener(new ActionListener() {
+            @Override public void actionPerformed(ActionEvent e) {
+                settingsEdit.dispose();
+            }});
+        settingsEdit.add(mailserverLabel);
+        layout.putConstraint(SpringLayout.WEST, mailserverLabel, 5, SpringLayout.WEST, settingsEdit);
+        layout.putConstraint(SpringLayout.NORTH, mailserverLabel, 20, SpringLayout.NORTH, settingsEdit);
+        settingsEdit.add(mailServer);
+        layout.putConstraint(SpringLayout.WEST, mailServer, 5, SpringLayout.WEST, mailserverLabel);
+        layout.putConstraint(SpringLayout.NORTH, mailServer, 5, SpringLayout.NORTH, settingsEdit);
+        settingsEdit.add(emailLabel);
+        layout.putConstraint(SpringLayout.WEST, emailLabel, 5, SpringLayout.WEST, settingsEdit);
+        layout.putConstraint(SpringLayout.NORTH, emailLabel, 5, SpringLayout.NORTH, mailserverLabel);
+        settingsEdit.add(email);
+        layout.putConstraint(SpringLayout.WEST, email, 5, SpringLayout.WEST, emailLabel);
+        layout.putConstraint(SpringLayout.NORTH, email, 5, SpringLayout.NORTH, mailServer);
+        settingsEdit.add(passwordLabel);
+        layout.putConstraint(SpringLayout.WEST, passwordLabel, 5, SpringLayout.WEST, settingsEdit);
+        layout.putConstraint(SpringLayout.NORTH, passwordLabel, 5, SpringLayout.NORTH, emailLabel);
+        settingsEdit.add(password);
+        layout.putConstraint(SpringLayout.WEST, password, 5, SpringLayout.WEST, passwordLabel);
+        layout.putConstraint(SpringLayout.NORTH, password, 5, SpringLayout.NORTH, email);
+        settingsEdit.add(keywords);
+        layout.putConstraint(SpringLayout.WEST, keywords, 5, SpringLayout.WEST, passwordLabel);
+        layout.putConstraint(SpringLayout.NORTH, keywords, 5, SpringLayout.NORTH, passwordLabel);
+
+        settingsEdit.add(save);
+        layout.putConstraint(SpringLayout.WEST, save, 5, SpringLayout.WEST, settingsEdit);
+        layout.putConstraint(SpringLayout.SOUTH, save, 5, SpringLayout.SOUTH, settingsEdit);
+        settingsEdit.add(cancel);
+        layout.putConstraint(SpringLayout.EAST, cancel, 5, SpringLayout.WEST, save);
+        layout.putConstraint(SpringLayout.SOUTH, cancel, 5, SpringLayout.SOUTH, settingsEdit);
+
+        settingsEdit.setVisible(true);
     }
 }
