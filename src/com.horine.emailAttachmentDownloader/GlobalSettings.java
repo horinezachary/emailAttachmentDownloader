@@ -1,4 +1,10 @@
 package com.horine.emailAttachmentDownloader;
+
+import com.sun.mail.util.BASE64DecoderStream;
+import com.sun.mail.util.BASE64EncoderStream;
+
+import java.io.*;
+
 public class GlobalSettings {
     private String cfgFilepath;
 
@@ -15,6 +21,57 @@ public class GlobalSettings {
         this.cfgFilepath = cfgFilepath;
     }
 
+    public void getData() {
+        String datain = "";
+        File infile = new File(cfgFilepath);
+        try {
+            FileInputStream fis = new FileInputStream(infile);
+            BASE64DecoderStream decodeStream = new BASE64DecoderStream(fis);
+            InputStreamReader isr = new InputStreamReader(decodeStream, "UTF-8");
+            BufferedReader in = new BufferedReader(isr);
+            String line;
+            while ((line = in.readLine()) != null){
+                datain += line;
+            }
+            in.close();
+
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        System.out.println(datain);
+        String[] splitvals = datain.split(";");
+        saveFolder = splitvals[0];
+        account = splitvals[1];
+        password = splitvals[2];
+        popHost = splitvals[3];
+        storeType = splitvals[4];
+        setKeywords(splitvals[5]);
+    }
+
+    public void saveData(){
+        String dataout = "";
+        dataout += saveFolder + ";"
+                + account + ";"
+                + password + ";"
+                + popHost + ";"
+                + storeType + ";"
+                + getKeywordString() + ";";
+        File outFile = new File(cfgFilepath);
+        try {
+            FileOutputStream fos = new FileOutputStream(outFile);
+            BASE64EncoderStream encodeStream = new BASE64EncoderStream(fos);
+            OutputStreamWriter osw = new OutputStreamWriter(encodeStream, "UTF-8");
+            BufferedWriter out = new BufferedWriter(osw);
+            out.write(dataout);
+            out.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+    }
 
     public String getCfgFilepath() {
         return cfgFilepath;
@@ -64,8 +121,21 @@ public class GlobalSettings {
         this.password = password;
     }
 
+    public String getKeywordString() {
+        String keywordString = "";
+        keywordString += keywords[0];
+        for (int i = 1; i < keywords.length; i++){
+            keywordString += "," + keywords[i];
+        }
+        return keywordString;
+    }
     public String[] getKeywords() {
         return keywords;
+    }
+
+    public void setKeywords(String keywords) {
+        String[] keywordArray = keywords.split(",");
+        this.keywords = keywordArray;
     }
     public void setKeywords(String[] keywords) {
         this.keywords = keywords;
