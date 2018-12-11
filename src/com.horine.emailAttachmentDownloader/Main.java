@@ -4,6 +4,8 @@ public class Main {
 
     EmailGetter getter;
     GlobalSettings settings;
+    DisplayPage displayPage;
+
     public Main(){
         settings = new GlobalSettings("settings.cfg");
         settings.getData();
@@ -11,6 +13,13 @@ public class Main {
 
         ImageSaver imageSaver = new ImageSaver(settings.getSaveFolder());
         getter = new EmailGetter(settings.getPopHost(), settings.getStoreType(), settings.getAccount(), settings.getPassword(), imageSaver);
+
+        displayPage = new DisplayPage(settings,getter);
+
+        if (settings.getSaveFolder() == null) {
+            settings.setSaveFolder(displayPage.chooseFolder());
+        }
+
         getter.fetch(settings.getKeywords());
         settings.saveData();
 
