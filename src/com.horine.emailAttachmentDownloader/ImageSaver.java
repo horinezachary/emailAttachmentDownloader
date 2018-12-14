@@ -23,30 +23,31 @@ public class ImageSaver {
         byte[] buffer = new byte[1024];
         int bytesRead;
 
+        picture.mark(10000000);
         while ((bytesRead = picture.read(buffer)) != -1) {
             newFileSizes.add(bytesRead);
             newFile.addElement(buffer);
         }
-        picture.close();
+        picture.reset();
 
-        //String newfilename = checkDuplicate(filename,newFile);
-        //if (newfilename == null){   //file already exists, and data matches exactly
-        //    return;
-        //}
+        String newfilename = checkDuplicate(filename,newFile);
+        if (newfilename == null){   //file already exists, and data matches exactly
+            return;
+        }
 
-        File file = new File(folderPath + "/" + filename);
+        File file = new File(folderPath + "/" + newfilename);
         FileOutputStream fos = new FileOutputStream(file);
 
+        /*
         System.out.println("Wrote file: " + filename);
         for(int i = 0; i < newFile.size(); i++){
                 fos.write(newFile.get(i),0,newFileSizes.get(i));
         }
+        */
 
-        /*
         while((bytesRead = picture.read(buffer)) != -1){
             fos.write(buffer, 0, bytesRead);
         }
-        */
 
         fos.close();
     }
@@ -61,12 +62,12 @@ public class ImageSaver {
             if (filename.equals(filePath[filePath.length - 1])) {
                 System.out.println("DUPLICATE: " + filename);
                 //files have same filename, check to see if data is the same
-                /*
+
                 if (checkDataSimilarity(newFileData, new File(files[i].getAbsolutePath())) == true) {
                     System.out.println(filename + ": FILES ARE THE SAME");
                     return null;    //if the files are the same, return null
                 }
-                */
+
                 System.out.println(filename + ": FILES ARE DIFFERENT");
                 //add parentheses and try again
                 int lastClose = filename.lastIndexOf(")");
@@ -106,7 +107,7 @@ public class ImageSaver {
             e.printStackTrace();
         }
 
-        /*
+
         for (int i = 0; i < newFileData.size() && i < existingFileData.size(); i++) {
             String newData = "";
             String existingData = "";
@@ -117,7 +118,6 @@ public class ImageSaver {
             }
             System.out.println(newData + " : " + existingData);
         }
-        */
 
         for (int i = 0; i < newFileData.size() && i < existingFileData.size(); i++){
             for (int j = 0; j < newFileData.get(i).length && j < existingFileData.get(i).length; j++) {
