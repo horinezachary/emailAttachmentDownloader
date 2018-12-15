@@ -237,6 +237,7 @@ public class DisplayPage {
                 settings.setAccount(email.getText());
                 settings.setPassword(password.getText());
                 settings.splitKeywordString(keywords.getText());
+                settings.saveData();
                 settingsEdit.dispose();
             }});
         JButton cancel = new JButton("Cancel");
