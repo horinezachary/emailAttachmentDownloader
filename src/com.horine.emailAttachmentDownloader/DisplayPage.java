@@ -243,8 +243,7 @@ public class DisplayPage {
                 settings.setPopHost(mailServer.getText());
                 settings.setAccount(email.getText());
                 settings.setPassword(password.getPassword().toString());
-                settings.setKeywords(splitKeywordString(keywords.getText()));
-                System.out.println(settings.getKeywordString());
+                settings.splitKeywordString(keywords.getText());
                 settingsEdit.dispose();
             }});
         JButton cancel = new JButton("Cancel");
@@ -281,31 +280,5 @@ public class DisplayPage {
         //Display the window.
         settingsEdit.pack();
         settingsEdit.setVisible(true);
-    }
-
-    private String splitKeywordString(String keywords){
-        String splitString = "";
-
-        String[] keywordArray = keywords.split(",");
-        for (int i = 0; i < keywordArray.length; i++){
-            if (keywordArray[i].length() == 0 || keywordArray[i].length() == 1 && keywordArray[i] == " "){
-                continue;
-            }
-            else{
-                String[] keywordspaceArray = keywordArray[i].split(" ");
-                for (int j = 0; j < keywordspaceArray.length; j++) {
-                    if (keywordspaceArray[j].length() == 0 || keywordspaceArray[j].length() == 1 && keywordspaceArray[j] == " "){
-                        continue;
-                    }
-                    else if (!splitString.equals("")){
-                        splitString += "," + keywordspaceArray[j];
-                    }
-                    else {
-                        splitString += keywordspaceArray[j];
-                    }
-                }
-            }
-        }
-        return splitString;
     }
 }
