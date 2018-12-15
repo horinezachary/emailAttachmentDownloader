@@ -1,10 +1,6 @@
 package com.horine.emailAttachmentDownloader;
 
 import javax.swing.*;
-import javax.swing.border.Border;
-import javax.swing.event.MenuDragMouseEvent;
-import javax.swing.event.MenuDragMouseListener;
-import javax.swing.filechooser.FileFilter;
 import javax.swing.filechooser.FileNameExtensionFilter;
 import java.awt.*;
 import java.awt.event.ActionEvent;
@@ -12,10 +8,8 @@ import java.awt.event.ActionListener;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
 import java.io.File;
-import java.io.FileOutputStream;
 import java.util.ArrayList;
 
-import static javax.swing.Spring.*;
 import static layout.SpringUtilities.makeCompactGrid;
 
 public class DisplayPage {
