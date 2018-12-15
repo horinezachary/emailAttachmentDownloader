@@ -235,7 +235,7 @@ public class DisplayPage {
             @Override public void actionPerformed(ActionEvent e) {
                 settings.setPopHost(mailServer.getText());
                 settings.setAccount(email.getText());
-                settings.setPassword(password.getPassword().toString());
+                settings.setPassword(password.getText());
                 settings.splitKeywordString(keywords.getText());
                 settingsEdit.dispose();
             }});
