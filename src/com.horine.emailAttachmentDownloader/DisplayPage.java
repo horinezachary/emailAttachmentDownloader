@@ -185,7 +185,7 @@ public class DisplayPage {
 
     void updatePrefrences(){
         JFrame settingsEdit = new JFrame("Preferences");
-        settingsEdit.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+        settingsEdit.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         settingsEdit.setSize(400,600);
         settingsEdit.setMinimumSize(new Dimension(500,190));
         settingsEdit.setLocation(500,300);
