@@ -49,7 +49,6 @@ public class DisplayPage {
 
     public String chooseFolder(){
         String filepath;
-
         JFileChooser fileChooser = new JFileChooser();
         fileChooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
         fileChooser.showOpenDialog(frame);
@@ -156,7 +155,7 @@ public class DisplayPage {
 
         //===SAVE FOLDER====
         JMenuItem saveFolder = new JMenuItem("Picture Save Folder");
-        exportSettings.addMouseListener(new MouseListener(){
+        saveFolder.addMouseListener(new MouseListener(){
             @Override public void mouseClicked(MouseEvent e) {}
             @Override public void mousePressed(MouseEvent e) {}
             @Override public void mouseEntered(MouseEvent e) {}
