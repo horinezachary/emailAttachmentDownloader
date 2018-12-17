@@ -233,7 +233,6 @@ public class DisplayPage {
         JButton save = new JButton("Save");
         save.addActionListener(new ActionListener() {
             @Override public void actionPerformed(ActionEvent e) {
-                System.out.println("\"" + mailServer.getText() + "\"");
                 if (mailServer.getText().equals("") || email.getText().equals("") || password.getText().equals("")) {
                     JOptionPane.showMessageDialog(settingsEdit, "Fields cannot be empty!", "Empty Fields", JOptionPane.WARNING_MESSAGE);
                 }
