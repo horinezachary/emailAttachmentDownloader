@@ -29,12 +29,13 @@ public class DisplayPage {
         frame.setJMenuBar(generateMenu());
         elements = new ArrayList<DisplayElem>();
         JPanel elementPanel = new JPanel();
-        frame.add(elementPanel, BorderLayout.CENTER);
+        elementPanel.setLayout(new BoxLayout(elementPanel, BoxLayout.PAGE_AXIS));
+        JScrollPane scrollPane = new JScrollPane(elementPanel);
+        frame.add(scrollPane, BorderLayout.CENTER);
         frame.setVisible(true);
     }
 
     public void update(){
-        elementPanel = new JPanel();
         for (int i = 0; i < elements.size(); i++){
 
         }
