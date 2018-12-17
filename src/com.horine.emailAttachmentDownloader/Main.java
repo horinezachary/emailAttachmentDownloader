@@ -14,6 +14,7 @@ public class Main {
         getter = new EmailGetter(settings.getPopHost(), settings.getStoreType(), settings.getAccount(), settings.getPassword(), imageSaver);
 
         displayPage = new DisplayPage(settings,getter);
+        displayPage.addElement(new DisplayElem(displayPage, 0,"THIS IS A TEST"));
 
         if (settings.getSaveFolder() == null) {
             settings.setSaveFolder(displayPage.chooseFolder());
