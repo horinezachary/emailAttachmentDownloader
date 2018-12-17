@@ -24,7 +24,8 @@ public class DisplayPage {
 
         frame = new JFrame("Attachment Downloader");
         frame.setDefaultCloseOperation(JFrame.HIDE_ON_CLOSE);
-        frame.setSize(400,200);
+        frame.setMinimumSize(new Dimension(400,400));
+        frame.setMaximumSize(new Dimension(400,800));
         frame.setLayout(new BorderLayout());
         frame.setJMenuBar(generateMenu());
         elements = new ArrayList<DisplayElem>();
