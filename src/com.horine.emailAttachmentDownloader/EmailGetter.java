@@ -61,28 +61,31 @@ public class EmailGetter {
             Message[] messages = emailFolder.getMessages();
             System.out.println("messages.length---" + messages.length);
 
-            for (int i = 0; i < messages.length; i++) {
-                Message message = messages[i];
-                System.out.println("Message " + i + ": " + messages[i].getSubject());
-                System.out.print("Matches: ");
-                int matches = 0;
-                for (int j = 0; j < keywords.length; j++) {
-                    if (message.getSubject().toLowerCase().contains(keywords[j])){
-                        matches++;
-                        System.out.print(keywords[j] + " ");
+            if (keywords.length > 0) {  //if there are keywords in the array, check all incoming messages against them
+                for (int i = 0; i < messages.length; i++) {
+                    Message message = messages[i];
+                    System.out.println("Message " + i + ": " + messages[i].getSubject());
+                    System.out.print("Matches: ");
+                    int matches = 0;
+                    for (int j = 0; j < keywords.length; j++) { //check the message subject against all of the keywords in the array
+                        if (message.getSubject().toLowerCase().contains(keywords[j])) {
+                            matches++;
+                            System.out.print(keywords[j] + " ");
+                        }
+                    }
+                    if (matches >= 1) { //if there is at least one match, download the message
+                        System.out.println("---------------------------------");
+                        writePart(message);
+                    } else {    //otherwise, move on
+                        System.out.println("NO MATCHES");
                     }
                 }
-                if (matches >= 1) {        /*
-        System.out.println("Wrote file: " + filename);
-        for(int i = 0; i < newFile.size(); i++){
-            fos.write(newFile.get(i), 0, newFileSizes.get(i));
-        }
-        */
+            }
+            else if (keywords.length == 0){ //if there are no keywords, accept everything
+                System.out.println("NO Keywords!");
+                for (int i = 0; i < messages.length; i++) {
                     System.out.println("---------------------------------");
-                    writePart(message);
-                }
-                else {
-                    System.out.println("NO MATCHES");
+                    writePart(messages[i]);
                 }
             }
 
