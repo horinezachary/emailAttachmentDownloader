@@ -50,6 +50,7 @@ public class DisplayPage {
             }
         }
         frame.pack();
+        elementPanel.updateUI();
         frame.setVisible(true);
     }
 
