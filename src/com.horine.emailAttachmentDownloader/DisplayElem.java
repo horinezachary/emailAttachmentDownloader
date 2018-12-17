@@ -52,4 +52,30 @@ public class DisplayElem extends JPanel{
     public void setId(int id){
         this.id = id;
     }
+
+    public String getText() {
+        return text;
+    }
+
+    private void addCloseButton(){
+        JButton closeButton = new JButton("X");
+        try {
+            BufferedImage buttonIcon = ImageIO.read(new File("close.png"));
+            closeButton = new JButton(new ImageIcon(buttonIcon));
+            closeButton.addMouseListener(new MouseListener() {
+                @Override public void mouseClicked(MouseEvent e) {}
+                @Override public void mousePressed(MouseEvent e) {}
+                @Override public void mouseReleased(MouseEvent e) {close();}
+                @Override public void mouseEntered(MouseEvent e) {}
+                @Override public void mouseExited(MouseEvent e) {}
+            });
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        closeButton.setMaximumSize(new Dimension(20,20));
+        //closeButton.setBorder(BorderFactory.createEmptyBorder());
+        //closeButton.setContentAreaFilled(false);
+        add(closeButton,BorderLayout.EAST);
+    }
 }
