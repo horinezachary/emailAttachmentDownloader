@@ -233,12 +233,18 @@ public class DisplayPage {
         JButton save = new JButton("Save");
         save.addActionListener(new ActionListener() {
             @Override public void actionPerformed(ActionEvent e) {
-                settings.setPopHost(mailServer.getText());
-                settings.setAccount(email.getText());
-                settings.setPassword(password.getText());
-                settings.splitKeywordString(keywords.getText());
-                settings.saveData();
-                settingsEdit.dispose();
+                System.out.println("\"" + mailServer.getText() + "\"");
+                if (mailServer.getText().equals("") || email.getText().equals("") || password.getText().equals("")) {
+                    JOptionPane.showMessageDialog(settingsEdit, "Fields cannot be empty!", "Empty Fields", JOptionPane.WARNING_MESSAGE);
+                }
+                else {
+                    settings.setPopHost(mailServer.getText());
+                    settings.setAccount(email.getText());
+                    settings.setPassword(password.getText());
+                    settings.splitKeywordString(keywords.getText());
+                    settings.saveData();
+                    settingsEdit.dispose();
+                }
             }});
         JButton cancel = new JButton("Cancel");
         cancel.addActionListener(new ActionListener() {
