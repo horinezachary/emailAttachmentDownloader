@@ -3,7 +3,7 @@ package com.horine.emailAttachmentDownloader;
 
 import javax.swing.*;
 
-public class DisplayElem {
+public class DisplayElem extends JPanel{
 
     int id;
     String text;
@@ -13,12 +13,5 @@ public class DisplayElem {
         this.text = text;
     }
 
-    public JPanel getJPanel(){
-        JPanel panel = new JPanel();
-        JTextPane textpane = new JTextPane();
-        textpane.setText(text);
-
-        panel.add(textpane);
-        return panel;
     }
 }
