@@ -48,7 +48,12 @@ public class GlobalSettings {
         password = splitvals[2];
         popHost = splitvals[3];
         storeType = splitvals[4];
-        setKeywords(splitvals[5]);
+        if (splitvals.length < 6){
+            setKeywords("");
+        }
+        else {
+            setKeywords(splitvals[5]);
+        }
     }
 
     public void saveData(){
