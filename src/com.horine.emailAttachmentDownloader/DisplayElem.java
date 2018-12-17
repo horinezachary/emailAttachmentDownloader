@@ -22,7 +22,7 @@ public class DisplayElem extends JPanel{
     }
 
     private void close(){
-        page.removeElement(id);
+        toRemove = true;
     }
 
     public void setOnScreen(boolean onScreen) {

@@ -43,7 +43,8 @@ public class DisplayPage {
             }
             else if (elements.get(i).getOnScreen() == true){
                 if (elements.get(i).toRemove == true){
-
+                    elementPanel.remove(elements.get(i));
+                    elements.remove(i);
                 }
             }
         }
@@ -52,14 +53,6 @@ public class DisplayPage {
     public void addElement(DisplayElem element){
         element.setId(elements.size());
         elements.add(element);
-    }
-    public void removeElement(int index){
-
-        elements.remove(index);
-        for (int i = index; i < elements.size(); i++){
-            elements.get(i+1).setId(i);
-        }
-
     }
 
     public String chooseFolder(){
