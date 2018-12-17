@@ -37,12 +37,28 @@ public class DisplayPage {
 
     public void update(){
         for (int i = 0; i < elements.size(); i++){
+            if (elements.get(i).getOnScreen() == false){
+                elements.get(i).setOnScreen(true);
+                elementPanel.add(elements.get(i));
+            }
+            else if (elements.get(i).getOnScreen() == true){
+                if (elements.get(i).toRemove == true){
 
+                }
+            }
         }
     }
 
     public void addElement(DisplayElem element){
+        element.setId(elements.size());
         elements.add(element);
+    }
+    public void removeElement(int index){
+
+        elements.remove(index);
+        for (int i = index; i < elements.size(); i++){
+            elements.get(i+1).setId(i);
+        }
 
     }
 
