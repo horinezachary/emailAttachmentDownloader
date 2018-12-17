@@ -28,7 +28,7 @@ public class DisplayPage {
         frame.setLayout(new BorderLayout());
         frame.setJMenuBar(generateMenu());
         elements = new ArrayList<DisplayElem>();
-        JPanel elementPanel = new JPanel();
+        elementPanel = new JPanel();
         elementPanel.setLayout(new BoxLayout(elementPanel, BoxLayout.PAGE_AXIS));
         JScrollPane scrollPane = new JScrollPane(elementPanel);
         frame.add(scrollPane, BorderLayout.CENTER);
@@ -48,11 +48,14 @@ public class DisplayPage {
                 }
             }
         }
+        frame.pack();
+        frame.setVisible(true);
     }
 
     public void addElement(DisplayElem element){
         element.setId(elements.size());
         elements.add(element);
+        update();
     }
 
     public String chooseFolder(){
