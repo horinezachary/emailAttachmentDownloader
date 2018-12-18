@@ -68,7 +68,10 @@ public class EmailGetter {
                     System.out.print("Matches: ");
                     int matches = 0;
                     for (int j = 0; j < keywords.length; j++) { //check the message subject against all of the keywords in the array
-                        if (message.getSubject().toLowerCase().contains(keywords[j])) {
+                        if (message.getSubject() == null){
+                            continue;
+                        }
+                        else if (message.getSubject().toLowerCase().contains(keywords[j])) {
                             matches++;
                             System.out.print(keywords[j] + " ");
                         }
