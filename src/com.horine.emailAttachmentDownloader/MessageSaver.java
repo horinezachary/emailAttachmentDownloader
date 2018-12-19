@@ -1,6 +1,7 @@
 package com.horine.emailAttachmentDownloader;
 
 import com.sun.mail.util.BASE64DecoderStream;
+import com.sun.mail.util.BASE64EncoderStream;
 
 import java.io.*;
 import java.util.ArrayList;
@@ -14,7 +15,29 @@ public class MessageSaver {
     }
 
     public void saveElements(ArrayList<DisplayElem> elements){
-        //TODO message file saving
+        String dataout = "";
+
+        for (int i = 0; i < elements.size(); i++){
+            DisplayElem elem = elements.get(i);
+            String elemString = "";
+            elemString += elem.getId() + ";";
+            elemString += elem.getDate() + ";";
+            elemString += elem.getText() + ";";
+            elemString += "\n";
+            dataout += elemString;
+        }
+
+        File outFile = new File(filepath);
+        try {
+            FileOutputStream fos = new FileOutputStream(outFile);
+            BASE64EncoderStream encodeStream = new BASE64EncoderStream(fos);
+            OutputStreamWriter osw = new OutputStreamWriter(encodeStream, "UTF-8");
+            BufferedWriter out = new BufferedWriter(osw);
+            out.write(dataout);
+            out.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     public ArrayList<DisplayElem> loadElements(DisplayPage displayPage){

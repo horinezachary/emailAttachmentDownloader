@@ -9,10 +9,13 @@ import java.awt.event.MouseListener;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 
 public class DisplayElem extends JPanel{
 
     int id;
+    String date;
     String text;
     boolean onScreen;
     boolean toRemove;
@@ -22,6 +25,9 @@ public class DisplayElem extends JPanel{
         super();
         this.page = p;
         this.id = id;
+        SimpleDateFormat sdf = new SimpleDateFormat("MM/dd/yy HH:mm");
+        Date dt = new Date();
+        this.date = sdf.format(dt);
         this.text = text;
         onScreen = false;
         toRemove = false;
@@ -49,8 +55,16 @@ public class DisplayElem extends JPanel{
         return onScreen;
     }
 
+    public int getId(){
+        return id;
+    }
+
     public void setId(int id){
         this.id = id;
+    }
+
+    public String getDate(){
+        return this.date;
     }
 
     public String getText() {
