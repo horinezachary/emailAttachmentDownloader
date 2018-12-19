@@ -86,24 +86,29 @@ public class DisplayElem extends JPanel{
     }
 
     private void addCloseButton(){
-        JButton closeButton = new JButton("X");
+        BufferedImage buttonIcon = null;
         try {
-            BufferedImage buttonIcon = ImageIO.read(new File("close.png"));
-            closeButton = new JButton(new ImageIcon(buttonIcon));
-            closeButton.addMouseListener(new MouseListener() {
-                @Override public void mouseClicked(MouseEvent e) {}
-                @Override public void mousePressed(MouseEvent e) {}
-                @Override public void mouseReleased(MouseEvent e) {close();}
-                @Override public void mouseEntered(MouseEvent e) {}
-                @Override public void mouseExited(MouseEvent e) {}
-            });
-
+            buttonIcon = ImageIO.read(new File("close.png"));
         } catch (IOException e) {
             e.printStackTrace();
         }
+        JButton closeButton = new JButton(new ImageIcon(buttonIcon));
+        closeButton.addMouseListener(new MouseListener() {
+            @Override public void mouseClicked(MouseEvent e) {}
+            @Override public void mousePressed(MouseEvent e) {}
+            @Override public void mouseReleased(MouseEvent e) {close();}
+            @Override public void mouseEntered(MouseEvent e) {}
+            @Override public void mouseExited(MouseEvent e) {}
+        });
         closeButton.setMaximumSize(new Dimension(20,20));
-        //closeButton.setBorder(BorderFactory.createEmptyBorder());
-        //closeButton.setContentAreaFilled(false);
-        add(closeButton,BorderLayout.EAST);
+        closeButton.setPreferredSize(new Dimension(20,20));
+        closeButton.setMinimumSize(new Dimension(20,20));
+        closeButton.setBorder(BorderFactory.createEmptyBorder());
+        closeButton.setContentAreaFilled(false);
+        JPanel p = new JPanel();
+        p.setLayout(new FlowLayout());
+        p.setBackground(this.getBackground());
+        p.add(closeButton);
+        add(p,BorderLayout.EAST);
     }
 }
