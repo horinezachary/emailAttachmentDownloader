@@ -21,17 +21,29 @@ public class DisplayElem extends JPanel{
     boolean toRemove;
     DisplayPage page;
 
-    public DisplayElem(DisplayPage p, int id, String date, String text){
+    public DisplayElem(DisplayPage p, int id, String text){
         super();
         this.page = p;
         this.id = id;
         SimpleDateFormat sdf = new SimpleDateFormat("MM/dd/yy HH:mm");
         Date dt = new Date();
         this.date = sdf.format(dt);
+        onScreen = false;
+        toRemove = false;
+        setupFrame();
+    }
+
+    public DisplayElem(DisplayPage p, int id, String date, String text){
+        super();
+        this.page = p;
+        this.id = id;
+        this.date = date;
         this.text = text;
         onScreen = false;
         toRemove = false;
-
+        setupFrame();
+    }
+    private void setupFrame(){
         setMaximumSize(new Dimension(400,100));
         setMinimumSize(new Dimension(397,50));
 
