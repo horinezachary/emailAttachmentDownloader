@@ -18,7 +18,7 @@ public class DisplayElem extends JPanel{
     boolean toRemove;
     DisplayPage page;
 
-    public DisplayElem(DisplayPage p, int id, String text){
+    public DisplayElem(DisplayPage p, int id, String date, String text){
         super();
         this.page = p;
         this.id = id;
