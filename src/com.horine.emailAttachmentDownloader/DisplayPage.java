@@ -16,14 +16,17 @@ public class DisplayPage {
     GlobalSettings settings;
     EmailGetter getter;
     PreferencesFrame prefFrame;
+    MessageSaver msgSaver;
 
     public DisplayPage(GlobalSettings settings, EmailGetter getter) {
         this.settings = settings;
         this.getter = getter;
         prefFrame = new PreferencesFrame(settings);
+        msgSaver = new MessageSaver(".messages");
+        elements = msgSaver.loadElements();
 
         frame = new JFrame("Attachment Downloader");
-        frame.setDefaultCloseOperation(JFrame.HIDE_ON_CLOSE);
+        frame.setDefaultCloseOperation(close());
         frame.setMinimumSize(new Dimension(400,400));
         frame.setMaximumSize(new Dimension(400,800));
         frame.setLayout(new BorderLayout());
@@ -34,6 +37,11 @@ public class DisplayPage {
         JScrollPane scrollPane = new JScrollPane(elementPanel);
         frame.add(scrollPane, BorderLayout.CENTER);
         frame.setVisible(true);
+    }
+
+    private int close() {
+        msgSaver.saveElements(elements);
+        return JFrame.EXIT_ON_CLOSE;
     }
 
     public void update(){
