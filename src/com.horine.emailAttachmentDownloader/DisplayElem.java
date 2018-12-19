@@ -28,6 +28,7 @@ public class DisplayElem extends JPanel{
         SimpleDateFormat sdf = new SimpleDateFormat("MM/dd/yy HH:mm");
         Date dt = new Date();
         this.date = sdf.format(dt);
+        this.text = text;
         onScreen = false;
         toRemove = false;
         setupFrame();
@@ -45,10 +46,11 @@ public class DisplayElem extends JPanel{
     }
     private void setupFrame(){
         setMaximumSize(new Dimension(400,100));
-        setMinimumSize(new Dimension(397,50));
+        setMinimumSize(new Dimension(380,100));
 
         setLayout(new BorderLayout());
-        //setPreferredSize(new Dimension(397,50));
+        setPreferredSize(new Dimension(387,100));
+        setBorder(BorderFactory.createEtchedBorder());
         setBackground(Color.ORANGE);
         setToolTipText(text);
 
