@@ -76,8 +76,8 @@ public class EmailGetter {
                             System.out.print(keywords[j] + " ");
                         }
                     }
-                    if (matches >= 1) { //if there is at least one match, download the message
-                        System.out.println("---------------------------------");
+                    if (matches >= 1) { //if there is at least one match, dsunset-trail-order-of-the-arrow@googlegroups.comownload the message
+                        //System.out.println("---------------------------------");
                         writePart(message);
                     } else {    //otherwise, move on
                         System.out.println("NO MATCHES");
@@ -87,7 +87,7 @@ public class EmailGetter {
             else if (keywords.length == 0){ //if there are no keywords, accept everything
                 System.out.println("NO Keywords!");
                 for (int i = 0; i < messages.length; i++) {
-                    System.out.println("---------------------------------");
+                    //System.out.println("---------------------------------");
                     writePart(messages[i]);
                 }
             }
@@ -197,10 +197,12 @@ public class EmailGetter {
         }
 
         // TO
+        /*
         if ((a = m.getRecipients(Message.RecipientType.TO)) != null) {
             for (int j = 0; j < a.length; j++)
                 System.out.println("TO: " + a[j].toString());
         }
+        */
 
         // SUBJECT
         if (m.getSubject() != null)
