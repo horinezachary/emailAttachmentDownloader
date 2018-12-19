@@ -33,8 +33,12 @@ public class DisplayPage {
         frame.setJMenuBar(generateMenu());
         elements = new ArrayList<DisplayElem>();
         elementPanel = new JPanel();
-        elementPanel.setLayout(new BoxLayout(elementPanel, BoxLayout.PAGE_AXIS));
-        JScrollPane scrollPane = new JScrollPane(elementPanel);
+        BoxLayout elementPanelLayout = new BoxLayout(elementPanel, BoxLayout.PAGE_AXIS);
+        elementPanel.setSize(370,400);
+        elementPanel.setLayout(elementPanelLayout);
+        JScrollPane scrollPane = new JScrollPane(elementPanel, JScrollPane.VERTICAL_SCROLLBAR_ALWAYS, JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+        scrollPane.setPreferredSize(new Dimension(397,frame.getHeight()-25));
+        scrollPane.createVerticalScrollBar();
         frame.add(scrollPane, BorderLayout.CENTER);
         frame.setVisible(true);
     }
@@ -45,6 +49,7 @@ public class DisplayPage {
     }
 
     public void update(){
+        elementPanel.setSize(400,elements.size()*50);
         for (int i = 0; i < elements.size(); i++){
             if (elements.get(i).getOnScreen() == false){
                 elements.get(i).setOnScreen(true);
