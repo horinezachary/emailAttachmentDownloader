@@ -19,7 +19,8 @@ public class Main {
             settings.setSaveFolder(displayPage.chooseFolder());
         }
 
-        getter.fetch(settings.getKeywords());
+        DisplayElem elem = getter.fetch(settings.getKeywords());
+        displayPage.addElement(elem);
         settings.saveData();
 
     }
