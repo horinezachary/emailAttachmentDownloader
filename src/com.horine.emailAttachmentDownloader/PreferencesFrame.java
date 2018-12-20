@@ -2,19 +2,16 @@ package com.horine.emailAttachmentDownloader;
 
 import javax.swing.*;
 import java.awt.*;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
 
 import static layout.SpringUtilities.makeCompactGrid;
 
-public class PreferencesFrame{
+class PreferencesFrame{
 
-    JFrame settingsEdit;
-    JTextField mailServer;
-    JTextField email;
-    JPasswordField password;
-    JTextArea keywords;
-    GlobalSettings settings;
+    private JFrame settingsEdit;
+    private JTextField mailServer;
+    private JTextField email;
+    private JPasswordField password;
+    private JTextArea keywords;
 
     public PreferencesFrame(GlobalSettings settings){
         this.settings = settings;
@@ -28,7 +25,7 @@ public class PreferencesFrame{
         settingsEdit.setLayout(layout);
     }
 
-    private void setupfields(){
+    private void setupfields(GlobalSettings settings){
         mailServer = new JTextField();
         mailServer.setSize(100,30);
         mailServer.setMaximumSize(new Dimension(2000,30));
@@ -101,25 +98,21 @@ public class PreferencesFrame{
 
     private JPanel setupSouthPanel(){
         JButton save = new JButton("Save");
-        save.addActionListener(new ActionListener() {
-            @Override public void actionPerformed(ActionEvent e) {
-                if (mailServer.getText().equals("") || email.getText().equals("") || password.getText().equals("")) {
-                    JOptionPane.showMessageDialog(settingsEdit, "Fields cannot be empty!", "Empty Fields", JOptionPane.WARNING_MESSAGE);
-                }
-                else {
-                    settings.setPopHost(mailServer.getText());
-                    settings.setAccount(email.getText());
-                    settings.setPassword(password.getText());
-                    settings.splitKeywordString(keywords.getText());
-                    settings.saveData();
-                    settingsEdit.dispose();
-                }
-            }});
-        JButton cancel = new JButton("Cancel");
-        cancel.addActionListener(new ActionListener() {
-            @Override public void actionPerformed(ActionEvent e) {
+        save.addActionListener(e -> {
+            if (mailServer.getText().equals("") || email.getText().equals("") || password.getText().equals("")) {
+                JOptionPane.showMessageDialog(settingsEdit, "Fields cannot be empty!", "Empty Fields", JOptionPane.WARNING_MESSAGE);
+            }
+            else {
+                settings.setPopHost(mailServer.getText());
+                settings.setAccount(email.getText());
+                settings.setPassword(password.getText());
+                settings.splitKeywordString(keywords.getText());
+                settings.saveData();
                 settingsEdit.dispose();
-            }});
+            }
+        });
+        JButton cancel = new JButton("Cancel");
+        cancel.addActionListener(e -> settingsEdit.dispose());
 
         JPanel south = new JPanel(new FlowLayout());
         south.add(save);

@@ -8,15 +8,14 @@ import java.awt.event.MouseListener;
 import java.io.File;
 import java.util.ArrayList;
 
-public class DisplayPage {
+class DisplayPage {
 
-    ArrayList<DisplayElem> elements;
-    JPanel elementPanel;
-    JFrame frame;
-    GlobalSettings settings;
-    EmailGetter getter;
-    PreferencesFrame prefFrame;
-    MessageSaver msgSaver;
+    private ArrayList<DisplayElem> elements;
+    private JPanel elementPanel;
+    private JFrame frame;
+    private ArrayList<GlobalSettings> settingsFiles;
+    private PreferencesFrame prefFrame;
+    private MessageSaver msgSaver;
 
     public DisplayPage(GlobalSettings settings, EmailGetter getter) {
         this.settings = settings;
@@ -47,14 +46,14 @@ public class DisplayPage {
         frame.setVisible(true);
     }
 
-    public void update(){
+    void update(){
         for (int i = 0; i < elements.size(); i++){
-            if (elements.get(i).getOnScreen() == false){
+            if (!elements.get(i).getOnScreen()){
                 elements.get(i).setOnScreen(true);
                 elementPanel.add(elements.get(i));
             }
-            else if (elements.get(i).getOnScreen() == true){
-                if (elements.get(i).toRemove == true){
+            else if (elements.get(i).getOnScreen()){
+                if (elements.get(i).toRemove){
                     elementPanel.remove(elements.get(i));
                     elements.remove(i);
                 }
@@ -66,13 +65,13 @@ public class DisplayPage {
         frame.setVisible(true);
     }
 
-    public void addElement(DisplayElem element){
+    void addElement(DisplayElem element){
         element.setPage(this);
         elements.add(element);
         update();
     }
 
-    public String chooseFolder(){
+    String chooseFolder(){
         String filepath;
         JFileChooser fileChooser = new JFileChooser();
         fileChooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
@@ -82,7 +81,7 @@ public class DisplayPage {
         return filepath;
     }
 
-    public String chooseFile(String filename, String description, String extensions){
+    private String chooseFile(String filename, String description, String extensions){
         String filepath;
 
         JFileChooser fileChooser = new JFileChooser();

@@ -14,11 +14,11 @@ import java.util.Date;
 
 public class DisplayElem extends JPanel{
 
-    String date;
-    String text;
-    boolean onScreen;
+    private String date;
+    private String text;
+    private boolean onScreen;
     boolean toRemove;
-    DisplayPage page;
+    private DisplayPage page;
 
     public DisplayElem(){
         super();
@@ -32,7 +32,7 @@ public class DisplayElem extends JPanel{
         setupFrame();
     }
 
-    public DisplayElem(String text){
+    DisplayElem(String text){
         super();
         SimpleDateFormat sdf = new SimpleDateFormat("MM/dd/yy hh:mm a");
         Date dt = new Date();
@@ -43,7 +43,7 @@ public class DisplayElem extends JPanel{
         setupFrame();
     }
 
-    public DisplayElem(String date, String text){
+    DisplayElem(String date, String text){
         super();
         this.date = date;
         this.text = text;
@@ -69,22 +69,22 @@ public class DisplayElem extends JPanel{
         page.update();
     }
 
-    public void setOnScreen(boolean onScreen) {
+    void setOnScreen(boolean onScreen) {
         this.onScreen = onScreen;
     }
-    public boolean getOnScreen(){
+    boolean getOnScreen(){
         return onScreen;
     }
 
-    public void setPage(DisplayPage page){
+    void setPage(DisplayPage page){
         this.page = page;
     }
 
-    public String getDate(){
+    String getDate(){
         return this.date;
     }
 
-    public String getText() {
+    String getText() {
         return text;
     }
 

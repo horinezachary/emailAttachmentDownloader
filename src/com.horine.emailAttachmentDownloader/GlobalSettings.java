@@ -4,6 +4,7 @@ import com.sun.mail.util.BASE64DecoderStream;
 import com.sun.mail.util.BASE64EncoderStream;
 
 import java.io.*;
+import java.nio.charset.StandardCharsets;
 
 public class GlobalSettings {
     private String cfgFilepath;
@@ -17,17 +18,18 @@ public class GlobalSettings {
 
 
 
-    public GlobalSettings(String cfgFilepath){
+    GlobalSettings(String cfgFilepath){
         this.cfgFilepath = cfgFilepath;
+        this.onStartup = false;
     }
 
-    public void getData() {
+    void getData() {
         String datain = "";
         File infile = new File(cfgFilepath);
         try {
             FileInputStream fis = new FileInputStream(infile);
             BASE64DecoderStream decodeStream = new BASE64DecoderStream(fis);
-            InputStreamReader isr = new InputStreamReader(decodeStream, "UTF-8");
+            InputStreamReader isr = new InputStreamReader(decodeStream, StandardCharsets.UTF_8);
             BufferedReader in = new BufferedReader(isr);
             String line;
             while ((line = in.readLine()) != null){
@@ -35,8 +37,6 @@ public class GlobalSettings {
             }
             in.close();
 
-        } catch (FileNotFoundException e) {
-            e.printStackTrace();
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -56,7 +56,7 @@ public class GlobalSettings {
         }
     }
 
-    public void saveData(){
+    void saveData(){
         String dataout = "";
         dataout += saveFolder + ";"
                 + account + ";"
@@ -68,7 +68,7 @@ public class GlobalSettings {
         try {
             FileOutputStream fos = new FileOutputStream(outFile);
             BASE64EncoderStream encodeStream = new BASE64EncoderStream(fos);
-            OutputStreamWriter osw = new OutputStreamWriter(encodeStream, "UTF-8");
+            OutputStreamWriter osw = new OutputStreamWriter(encodeStream, StandardCharsets.UTF_8);
             BufferedWriter out = new BufferedWriter(osw);
             out.write(dataout);
             out.close();
@@ -78,55 +78,55 @@ public class GlobalSettings {
 
     }
 
-    public String getCfgFilepath() {
+    String getCfgFilepath() {
         return cfgFilepath;
     }
 
-    public void setCfgFilepath(String cfgFilepath) {
+    void setCfgFilepath(String cfgFilepath) {
         this.cfgFilepath = cfgFilepath;
     }
 
-    public String getSaveFolder() {
+    String getSaveFolder() {
         return saveFolder;
     }
 
-    public void setSaveFolder(String saveFolder) {
+    void setSaveFolder(String saveFolder) {
         this.saveFolder = saveFolder;
     }
 
-    public String getPopHost() {
+    String getPopHost() {
         return popHost;
     }
 
-    public void setPopHost(String popHost) {
+    void setPopHost(String popHost) {
         this.popHost = popHost;
     }
 
-    public String getStoreType() {
+    String getStoreType() {
         return storeType;
     }
 
-    public void setStoreType(String storeType) {
+    void setStoreType(String storeType) {
         this.storeType = storeType;
     }
 
-    public String getAccount() {
+    String getAccount() {
         return account;
     }
 
-    public void setAccount(String account) {
+    void setAccount(String account) {
         this.account = account;
     }
 
-    public String getPassword() {
+    String getPassword() {
         return password;
     }
 
-    public void setPassword(String password) {
+    void setPassword(String password) {
         this.password = password;
     }
 
-    public String getKeywordString() {
+    String getKeywordString() {
         String keywordString = "";
         keywordString += keywords[0];
         for (int i = 1; i < keywords.length; i++){
@@ -134,11 +134,11 @@ public class GlobalSettings {
         }
         return keywordString;
     }
-    public String[] getKeywords() {
+    String[] getKeywords() {
         return keywords;
     }
 
-    public void setKeywords(String keywords) {
+    void setKeywords(String keywords) {
         String[] keywordArray = keywords.split(",");
         this.keywords = keywordArray;
     }
@@ -146,7 +146,7 @@ public class GlobalSettings {
         this.keywords = keywords;
     }
 
-    public void splitKeywordString(String keywords){
+    void splitKeywordString(String keywords){
         String splitString = "";
 
         String[] keywordArray = keywords.split(",");
@@ -156,15 +156,13 @@ public class GlobalSettings {
             }
             else{
                 String[] keywordspaceArray = keywordArray[i].split(" ");
-                for (int j = 0; j < keywordspaceArray.length; j++) {
-                    if (keywordspaceArray[j].length() == 0 || keywordspaceArray[j].length() == 1 && keywordspaceArray[j] == " "){
+                for (String s : keywordspaceArray) {
+                    if (s.length() == 0 || s.length() == 1 && s == " ") {
                         continue;
-                    }
-                    else if (!splitString.equals("")){
-                        splitString += "," + keywordspaceArray[j];
-                    }
-                    else {
-                        splitString += keywordspaceArray[j];
+                    } else if (!splitString.equals("")) {
+                        splitString += "," + s;
+                    } else {
+                        splitString += s;
                     }
                 }
             }
