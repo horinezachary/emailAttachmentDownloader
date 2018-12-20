@@ -63,8 +63,7 @@ public class EmailGetter {
             // retrieve the messages from the folder in an array and print it
             Message[] messages = emailFolder.getMessages();
             System.out.println("messages.length---" + messages.length);
-
-            if (keywords.length > 0) {  //if there are keywords in the array, check all incoming messages against them
+            if (keywords.length > 1) {  //if there are keywords in the array, check all incoming messages against them
                 for (int i = 0; i < messages.length; i++) {
                     Message message = messages[i];
                     System.out.println("Message " + i + ": " + messages[i].getSubject());
@@ -90,7 +89,7 @@ public class EmailGetter {
                     }
                 }
             }
-            else if (keywords.length == 0){ //if there are no keywords, accept everything
+            else if (keywords.length <= 1){ //if there are no keywords, accept everything
                 System.out.println("NO Keywords!");
                 for (int i = 0; i < messages.length; i++) {
                     //System.out.println("---------------------------------");
