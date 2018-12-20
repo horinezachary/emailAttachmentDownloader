@@ -54,9 +54,8 @@ public class DisplayElem extends JPanel{
     private void setupFrame(){
         setMaximumSize(new Dimension(400,100));
         setMinimumSize(new Dimension(380,100));
-
+        setPreferredSize(new Dimension(387, 30 + (int)(Math.ceil((double)text.length()/40) * 16) + 10));
         setLayout(new BorderLayout());
-        setPreferredSize(new Dimension(387,100));
         setBorder(BorderFactory.createBevelBorder(0));
         setBackground(Color.ORANGE);
         setToolTipText(text);
@@ -122,7 +121,7 @@ public class DisplayElem extends JPanel{
         datePane.setText(date);
         datePane.setEditable(false);
         datePane.setBackground(this.getBackground());
-        datePane.setMargin(new Insets(5,5,5,5));
+        datePane.setMargin(new Insets(5,5,0,5));
         JTextPane textPane = new JTextPane();
         textPane.setText(text);
         textPane.setEditable(false);
