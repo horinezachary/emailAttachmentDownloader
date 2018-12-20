@@ -5,15 +5,15 @@ import com.sun.mail.util.BASE64DecoderStream;
 import java.io.*;
 import java.util.Vector;
 
-public class ImageSaver {
+class ImageSaver {
 
-    String folderPath;
+    private String folderPath;
 
-    public ImageSaver(String folderPath) {
+    ImageSaver(String folderPath) {
         this.folderPath = folderPath;
     }
 
-    public boolean saveImage(BASE64DecoderStream picture, String filename, String filetype) throws IOException {
+    boolean saveImage(BASE64DecoderStream picture, String filename, String filetype) throws IOException {
         Vector<byte[]> newFile = new Vector<byte[]>();
         Vector<Integer> newFileSizes = new Vector<Integer>();
         byte[] buffer = new byte[1024];
@@ -53,14 +53,14 @@ public class ImageSaver {
         System.out.println("CHECK DUPLICATE: " + filename);
         String newFilename = filename;
         File[] files = new File(folderPath).listFiles();
-        for (int i = 0; i < files.length; i++) {
-            String[] filePath = files[i].getAbsolutePath().split("/");
+        for (File file : files) {
+            String[] filePath = file.getAbsolutePath().split("/");
             //System.out.println("ALT FILE: " + filePath[filePath.length-1]);
             if (filename.equals(filePath[filePath.length - 1])) {
                 System.out.println("DUPLICATE: " + filename);
                 //files have same filename, check to see if data is the same
 
-                if (checkDataSimilarity(newFileData, new File(files[i].getAbsolutePath())) == true) {
+                if (checkDataSimilarity(newFileData, new File(file.getAbsolutePath()))) {
                     System.out.println(filename + ": FILES ARE THE SAME");
                     return null;    //if the files are the same, return null
                 }
@@ -83,7 +83,9 @@ public class ImageSaver {
                             + filename.substring(filename.lastIndexOf("."));
                 }
                 newFilename = checkDuplicate(newFilename, newFileData);
-            } else {System.out.println("NOT A DUPLICATE: " + filePath[filePath.length - 1]);}
+            } else {
+                System.out.println("NOT A DUPLICATE: " + filePath[filePath.length - 1]);
+            }
         }
         return newFilename;
     }
@@ -98,8 +100,6 @@ public class ImageSaver {
                 existingFileData.add(buffer);
             }
             fis.close();
-        } catch (FileNotFoundException e) {
-            e.printStackTrace();
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -125,7 +125,7 @@ public class ImageSaver {
         return true;
     }
 
-    public String getFolderPath(){
+    String getFolderPath(){
         return this.folderPath;
     }
 }
