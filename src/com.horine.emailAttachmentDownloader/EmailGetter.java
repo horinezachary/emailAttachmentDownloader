@@ -42,7 +42,10 @@ public class EmailGetter {
 
         this.imageSaver = imageSaver;
     }
-    public static void fetch(String[] keywords) {
+    public static DisplayElem fetch(String[] keywords) {
+        int numImages = 0;
+        int numEmails = 0;
+        int presavedImages = 0;
         try {
             Session emailSession = Session.getDefaultInstance(properties);
 
@@ -78,7 +81,10 @@ public class EmailGetter {
                     }
                     if (matches >= 1) { //if there is at least one match, dsunset-trail-order-of-the-arrow@googlegroups.comownload the message
                         //System.out.println("---------------------------------");
-                        writePart(message);
+                        int[] ret = writePart(message);
+                        numImages += ret[0];
+                        presavedImages += ret[1];
+                        numEmails += 1;
                     } else {    //otherwise, move on
                         System.out.println("NO MATCHES");
                     }
@@ -88,8 +94,11 @@ public class EmailGetter {
                 System.out.println("NO Keywords!");
                 for (int i = 0; i < messages.length; i++) {
                     //System.out.println("---------------------------------");
-                    writePart(messages[i]);
+                    int[] ret = writePart(messages[i]);
+                    numImages += ret[0];
+                    presavedImages += ret[1];
                 }
+                numEmails = messages.length;
             }
 
             // close the store and folder objects
@@ -115,7 +124,9 @@ public class EmailGetter {
      * based on which, it processes and
      * fetches the content of the message
      */
-    public static void writePart(Part p) throws Exception {
+    public static int[] writePart(Part p) throws Exception {
+        int numImages = 0;
+        int presavedImages = 0;
         if (p instanceof Message) {
             //Call method writeEnvelope
             writeEnvelope((Message) p);
@@ -136,14 +147,19 @@ public class EmailGetter {
             System.out.println("---------------------------");
             Multipart mp = (Multipart) p.getContent();
             int count = mp.getCount();
-            for (int i = 0; i < count; i++)
-                writePart(mp.getBodyPart(i));
+            for (int i = 0; i < count; i++) {
+                int[] ret = writePart(mp.getBodyPart(i));
+                numImages += ret[0];
+                presavedImages += ret[1];
+            }
         }
         //check if the content is a nested message
         else if (p.isMimeType("message/rfc822")) {
             System.out.println("This is a Nested Message");
             System.out.println("---------------------------");
-            writePart((Part) p.getContent());
+            int[] ret =  writePart((Part) p.getContent());
+            numImages += ret[0];
+            presavedImages += ret[1];
         }
 
         //check if the content is an inline image
@@ -153,8 +169,13 @@ public class EmailGetter {
             String fileType = p.getContentType().split("/")[1].split(";")[0];
             String filename = p.getFileName();
             System.out.println(fileType);
-            imageSaver.saveImage((BASE64DecoderStream) p.getContent(), filename, fileType);
-
+            boolean alreadyExists = imageSaver.saveImage((BASE64DecoderStream) p.getContent(), filename, fileType);
+            if (alreadyExists){
+                presavedImages += 1;
+            }
+            else{
+                numImages += 1;
+            }
         }
         /*
         else {
@@ -180,7 +201,8 @@ public class EmailGetter {
             }
         }
         */
-
+        int[] ret = {numImages,presavedImages};
+    return ret;
     }
     /*
      * This method would print FROM,TO and SUBJECT of the message

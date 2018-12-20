@@ -17,7 +17,7 @@ public class ImageSaver {
         this.folderPath = folderPath;
     }
 
-    public void saveImage(BASE64DecoderStream picture, String filename, String filetype) throws IOException {
+    public boolean saveImage(BASE64DecoderStream picture, String filename, String filetype) throws IOException {
         Vector<byte[]> newFile = new Vector<byte[]>();
         Vector<Integer> newFileSizes = new Vector<Integer>();
         byte[] buffer = new byte[1024];
@@ -32,7 +32,7 @@ public class ImageSaver {
 
         String newfilename = checkDuplicate(filename,newFile);
         if (newfilename == null){   //file already exists, and data matches exactly
-            return;
+            return true;
         }
 
         File file = new File(folderPath + "/" + newfilename);
@@ -50,6 +50,7 @@ public class ImageSaver {
         }
 
         fos.close();
+        return false;
     }
 
     private String checkDuplicate(String filename, Vector<byte[]> newFileData){
@@ -126,5 +127,9 @@ public class ImageSaver {
             }
         }
         return true;
+    }
+
+    public String getFolderPath(){
+        return this.folderPath;
     }
 }
