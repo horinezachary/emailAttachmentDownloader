@@ -3,11 +3,8 @@ package com.horine.emailAttachmentDownloader;
 import com.sun.mail.util.BASE64DecoderStream;
 import com.sun.mail.util.MailConnectException;
 
-import javax.imageio.ImageIO;
 import javax.mail.*;
-import java.awt.image.BufferedImage;
 import java.io.*;
-import java.util.Date;
 import java.util.Properties;
 
 public class EmailGetter {
@@ -42,7 +39,10 @@ public class EmailGetter {
 
         this.imageSaver = imageSaver;
     }
-    public static void fetch(String[] keywords) {
+    public static DisplayElem fetch(String[] keywords) {
+        int numImages = 0;
+        int numEmails = 0;
+        int presavedImages = 0;
         try {
             Session emailSession = Session.getDefaultInstance(properties);
 
@@ -60,33 +60,41 @@ public class EmailGetter {
             // retrieve the messages from the folder in an array and print it
             Message[] messages = emailFolder.getMessages();
             System.out.println("messages.length---" + messages.length);
-
-            if (keywords.length > 0) {  //if there are keywords in the array, check all incoming messages against them
+            if (keywords.length > 1) {  //if there are keywords in the array, check all incoming messages against them
                 for (int i = 0; i < messages.length; i++) {
                     Message message = messages[i];
                     System.out.println("Message " + i + ": " + messages[i].getSubject());
                     System.out.print("Matches: ");
                     int matches = 0;
                     for (int j = 0; j < keywords.length; j++) { //check the message subject against all of the keywords in the array
-                        if (message.getSubject().toLowerCase().contains(keywords[j])) {
+                        if (message.getSubject() == null){
+                            continue;
+                        }
+                        else if (message.getSubject().toLowerCase().contains(keywords[j])) {
                             matches++;
                             System.out.print(keywords[j] + " ");
                         }
                     }
-                    if (matches >= 1) { //if there is at least one match, download the message
-                        System.out.println("---------------------------------");
-                        writePart(message);
+                    if (matches >= 1) { //if there is at least one match, dsunset-trail-order-of-the-arrow@googlegroups.comownload the message
+                        //System.out.println("---------------------------------");
+                        int[] ret = writePart(message);
+                        numImages += ret[0];
+                        presavedImages += ret[1];
+                        numEmails += 1;
                     } else {    //otherwise, move on
                         System.out.println("NO MATCHES");
                     }
                 }
             }
-            else if (keywords.length == 0){ //if there are no keywords, accept everything
+            else if (keywords.length <= 1){ //if there are no keywords, accept everything
                 System.out.println("NO Keywords!");
                 for (int i = 0; i < messages.length; i++) {
-                    System.out.println("---------------------------------");
-                    writePart(messages[i]);
+                    //System.out.println("---------------------------------");
+                    int[] ret = writePart(messages[i]);
+                    numImages += ret[0];
+                    presavedImages += ret[1];
                 }
+                numEmails = messages.length;
             }
 
             // close the store and folder objects
@@ -105,6 +113,13 @@ public class EmailGetter {
         } catch (Exception e) {
             e.printStackTrace();
         }
+        String text = "";
+        if (keywords.length <= 1){text =  "Ran and found " + numEmails + " e-mails";}
+        else {                    text =  "Ran and found " + numEmails + " matching e-mails";}
+        if (numEmails > 0){       text += " with " + numImages + " new images";}
+        if (presavedImages > 0)  {text += " and " + presavedImages + " existing images";}
+        if (numImages > 0){       text += ". Pictures saved to " + imageSaver.getFolderPath();}
+        return new DisplayElem(text);
     }
 
     /*
@@ -112,7 +127,9 @@ public class EmailGetter {
      * based on which, it processes and
      * fetches the content of the message
      */
-    public static void writePart(Part p) throws Exception {
+    public static int[] writePart(Part p) throws Exception {
+        int numImages = 0;
+        int presavedImages = 0;
         if (p instanceof Message) {
             //Call method writeEnvelope
             writeEnvelope((Message) p);
@@ -133,14 +150,19 @@ public class EmailGetter {
             System.out.println("---------------------------");
             Multipart mp = (Multipart) p.getContent();
             int count = mp.getCount();
-            for (int i = 0; i < count; i++)
-                writePart(mp.getBodyPart(i));
+            for (int i = 0; i < count; i++) {
+                int[] ret = writePart(mp.getBodyPart(i));
+                numImages += ret[0];
+                presavedImages += ret[1];
+            }
         }
         //check if the content is a nested message
         else if (p.isMimeType("message/rfc822")) {
             System.out.println("This is a Nested Message");
             System.out.println("---------------------------");
-            writePart((Part) p.getContent());
+            int[] ret =  writePart((Part) p.getContent());
+            numImages += ret[0];
+            presavedImages += ret[1];
         }
 
         //check if the content is an inline image
@@ -150,8 +172,13 @@ public class EmailGetter {
             String fileType = p.getContentType().split("/")[1].split(";")[0];
             String filename = p.getFileName();
             System.out.println(fileType);
-            imageSaver.saveImage((BASE64DecoderStream) p.getContent(), filename, fileType);
-
+            boolean alreadyExists = imageSaver.saveImage((BASE64DecoderStream) p.getContent(), filename, fileType);
+            if (alreadyExists){
+                presavedImages += 1;
+            }
+            else{
+                numImages += 1;
+            }
         }
         /*
         else {
@@ -177,7 +204,8 @@ public class EmailGetter {
             }
         }
         */
-
+        int[] ret = {numImages,presavedImages};
+    return ret;
     }
     /*
      * This method would print FROM,TO and SUBJECT of the message
@@ -194,10 +222,12 @@ public class EmailGetter {
         }
 
         // TO
+        /*
         if ((a = m.getRecipients(Message.RecipientType.TO)) != null) {
             for (int j = 0; j < a.length; j++)
                 System.out.println("TO: " + a[j].toString());
         }
+        */
 
         // SUBJECT
         if (m.getSubject() != null)
