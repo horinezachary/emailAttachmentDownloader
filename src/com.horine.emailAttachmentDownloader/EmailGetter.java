@@ -117,6 +117,13 @@ public class EmailGetter {
         } catch (Exception e) {
             e.printStackTrace();
         }
+        String text = "";
+        if (keywords.length <= 1){text =  "Ran and found " + numEmails + " e-mails";}
+        else {                    text =  "Ran and found " + numEmails + " matching e-mails";}
+        if (numEmails > 0){       text += " with " + numImages + " new images";}
+        if (presavedImages > 0)  {text += " and " + presavedImages + " existing images";}
+        if (numImages > 0){       text += ". Pictures saved to " + imageSaver.getFolderPath();}
+        return new DisplayElem(text);
     }
 
     /*

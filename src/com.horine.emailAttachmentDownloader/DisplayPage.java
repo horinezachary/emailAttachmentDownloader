@@ -113,7 +113,8 @@ public class DisplayPage {
             @Override public void mouseEntered(MouseEvent e) {}
             @Override public void mouseExited(MouseEvent e)  {}
             @Override public void mouseReleased(MouseEvent e) {
-                getter.fetch(settings.getKeywords());
+                DisplayElem email = getter.fetch(settings.getKeywords());
+                addElement(email);
             }
         });
         //JCheckBoxMenuItem startup = new JCheckBoxMenuItem("Run at Startup");
