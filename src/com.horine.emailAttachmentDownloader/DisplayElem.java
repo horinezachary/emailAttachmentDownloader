@@ -50,10 +50,10 @@ public class DisplayElem extends JPanel{
 
         setLayout(new BorderLayout());
         setPreferredSize(new Dimension(387,100));
-        setBorder(BorderFactory.createEtchedBorder());
+        setBorder(BorderFactory.createBevelBorder(0));
         setBackground(Color.ORANGE);
         setToolTipText(text);
-
+        add(setupLeftPane());
         addCloseButton();
     }
 
@@ -110,5 +110,24 @@ public class DisplayElem extends JPanel{
         p.setBackground(this.getBackground());
         p.add(closeButton);
         add(p,BorderLayout.EAST);
+    }
+
+    private JPanel setupLeftPane(){
+        JPanel panel = new JPanel();
+        panel.setLayout(new BorderLayout());
+        JTextPane datePane = new JTextPane();
+        datePane.setText(date);
+        datePane.setEditable(false);
+        datePane.setBackground(this.getBackground());
+        datePane.setMargin(new Insets(5,5,5,5));
+        JTextPane textPane = new JTextPane();
+        textPane.setText(text);
+        textPane.setEditable(false);
+        textPane.setBackground(this.getBackground());
+        textPane.setMargin(new Insets(5,15,5,5));
+        panel.add(datePane, BorderLayout.NORTH);
+        panel.add(textPane, BorderLayout.CENTER);
+
+        return panel;
     }
 }
