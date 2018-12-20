@@ -26,9 +26,12 @@ public class DisplayPage {
         elements = msgSaver.loadElements(this);
 
         frame = new JFrame("Attachment Downloader");
-        frame.setDefaultCloseOperation(close());
+        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setMinimumSize(new Dimension(400,400));
         frame.setMaximumSize(new Dimension(400,800));
+        frame.setPreferredSize(new Dimension(400,600));
+        frame.setLocation(200,100);
+        frame.setResizable(false);
         frame.setLayout(new BorderLayout());
         frame.setJMenuBar(generateMenu());
         elements = new ArrayList<DisplayElem>();
@@ -43,24 +46,24 @@ public class DisplayPage {
         frame.setVisible(true);
     }
 
-    private int close() {
-        msgSaver.saveElements(elements);
-        return JFrame.EXIT_ON_CLOSE;
-    }
-
     public void update(){
-        elementPanel.setSize(400,elements.size()*50);
+        boolean updated = false;
         for (int i = 0; i < elements.size(); i++){
             if (elements.get(i).getOnScreen() == false){
                 elements.get(i).setOnScreen(true);
                 elementPanel.add(elements.get(i));
+                updated = true;
             }
             else if (elements.get(i).getOnScreen() == true){
                 if (elements.get(i).toRemove == true){
                     elementPanel.remove(elements.get(i));
                     elements.remove(i);
+                    updated = true;
                 }
             }
+        }
+        if (updated) {
+            msgSaver.saveElements(elements);
         }
         frame.pack();
         elementPanel.updateUI();
