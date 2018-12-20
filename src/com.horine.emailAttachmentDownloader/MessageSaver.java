@@ -19,7 +19,7 @@ public class MessageSaver {
         for (int i = 0; i < elements.size(); i++){
             DisplayElem elem = elements.get(i);
             String elemString = "";
-            elemString += elem.getId() + ";";
+            elemString += i + ";";
             elemString += elem.getDate() + ";";
             elemString += elem.getText() + ";";
             elemString += "\n";
@@ -39,7 +39,7 @@ public class MessageSaver {
         }
     }
 
-    public ArrayList<DisplayElem> loadElements(DisplayPage displayPage){
+    public void loadElements(DisplayPage displayPage){
         ArrayList<DisplayElem> elements = new ArrayList<DisplayElem>();
 
         ArrayList<String> datain = new ArrayList<String>();
@@ -62,9 +62,8 @@ public class MessageSaver {
 
         for (int i = 0; i < datain.size(); i++) {
             String[] elementData = datain.get(i).split(";");
-            DisplayElem elem = new DisplayElem(displayPage, Integer.parseInt(elementData[0]), elementData[1], elementData[2]);
-            elements.add(elem);
+            DisplayElem elem = new DisplayElem(elementData[1], elementData[2]);
+            displayPage.addElement(elem);
         }
-        return elements;
     }
 }

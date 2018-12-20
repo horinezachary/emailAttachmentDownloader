@@ -66,7 +66,7 @@ public class DisplayPage {
     }
 
     public void addElement(DisplayElem element){
-        element.setId(elements.size());
+        element.setPage(this);
         elements.add(element);
         update();
     }
