@@ -3,11 +3,8 @@ package com.horine.emailAttachmentDownloader;
 import com.sun.mail.util.BASE64DecoderStream;
 import com.sun.mail.util.MailConnectException;
 
-import javax.imageio.ImageIO;
 import javax.mail.*;
-import java.awt.image.BufferedImage;
 import java.io.*;
-import java.util.Date;
 import java.util.Properties;
 
 public class EmailGetter {

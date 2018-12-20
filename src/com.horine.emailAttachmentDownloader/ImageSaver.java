@@ -3,11 +3,7 @@ package com.horine.emailAttachmentDownloader;
 import com.sun.mail.util.BASE64DecoderStream;
 
 import java.io.*;
-import java.util.Date;
 import java.util.Vector;
-
-import static java.lang.Integer.parseInt;
-import static java.lang.Integer.toHexString;
 
 public class ImageSaver {
 
