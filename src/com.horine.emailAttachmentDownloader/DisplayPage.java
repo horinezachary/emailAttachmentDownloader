@@ -23,8 +23,6 @@ public class DisplayPage {
         this.getter = getter;
         prefFrame = new PreferencesFrame(settings);
         msgSaver = new MessageSaver(".messages");
-        elements = msgSaver.loadElements(this);
-
         frame = new JFrame("Attachment Downloader");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setMinimumSize(new Dimension(400,400));
@@ -34,7 +32,7 @@ public class DisplayPage {
         frame.setResizable(false);
         frame.setLayout(new BorderLayout());
         frame.setJMenuBar(generateMenu());
-        elements = new ArrayList<DisplayElem>();
+        elements = msgSaver.loadElements(this);
         elementPanel = new JPanel();
         BoxLayout elementPanelLayout = new BoxLayout(elementPanel, BoxLayout.PAGE_AXIS);
         elementPanel.setSize(370,400);
@@ -43,28 +41,25 @@ public class DisplayPage {
         scrollPane.setPreferredSize(new Dimension(397,frame.getHeight()-25));
         scrollPane.createVerticalScrollBar();
         frame.add(scrollPane, BorderLayout.CENTER);
+        update();
+        frame.pack();
         frame.setVisible(true);
     }
 
     public void update(){
-        boolean updated = false;
         for (int i = 0; i < elements.size(); i++){
             if (elements.get(i).getOnScreen() == false){
                 elements.get(i).setOnScreen(true);
                 elementPanel.add(elements.get(i));
-                updated = true;
             }
             else if (elements.get(i).getOnScreen() == true){
                 if (elements.get(i).toRemove == true){
                     elementPanel.remove(elements.get(i));
                     elements.remove(i);
-                    updated = true;
                 }
             }
         }
-        if (updated) {
-            msgSaver.saveElements(elements);
-        }
+        msgSaver.saveElements(elements);
         frame.pack();
         elementPanel.updateUI();
         frame.setVisible(true);
