@@ -8,13 +8,14 @@ import java.nio.charset.StandardCharsets;
 
 public class GlobalSettings {
     private String cfgFilepath;
-
+    private String fileName;
     private String saveFolder;
     private String popHost;
     private String storeType;
     private String account;
     private String password;
     private String[] keywords;
+    private boolean onStartup;
 
 
 
@@ -54,6 +55,26 @@ public class GlobalSettings {
         else {
             setKeywords(splitvals[5]);
         }
+        setOnStartup(splitvals[6]);
+        setFileName(cfgFilepath);
+    }
+
+    private void setFileName(String cfgFilepath) {
+        this.fileName = cfgFilepath.substring(cfgFilepath.lastIndexOf("/")+1);
+    }
+    String getFileName(){
+        return this.fileName;
+    }
+
+    private void setOnStartup(String str) {
+        if (str.equals("true")){this.onStartup = true;}
+        else if (str.equals("false")){this.onStartup = false;}
+    }
+    public void setOnStartup(boolean onStartup){
+        this.onStartup = onStartup;
+    }
+    boolean getOnstartup(){
+        return this.onStartup;
     }
 
     void saveData(){
@@ -63,7 +84,8 @@ public class GlobalSettings {
                 + password + ";"
                 + popHost + ";"
                 + storeType + ";"
-                + getKeywordString() + ";";
+                + getKeywordString() + ";"
+                + onStartup + ";";
         File outFile = new File(cfgFilepath);
         try {
             FileOutputStream fos = new FileOutputStream(outFile);

@@ -13,9 +13,7 @@ class PreferencesFrame{
     private JPasswordField password;
     private JTextArea keywords;
 
-    public PreferencesFrame(GlobalSettings settings){
-        this.settings = settings;
-
+    PreferencesFrame(){
         settingsEdit = new JFrame("Preferences");
         settingsEdit.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
         settingsEdit.setSize(400,600);
@@ -52,8 +50,8 @@ class PreferencesFrame{
         keywords.setWrapStyleWord(true);
     }
 
-    public void updatePrefrences(){
-        setupfields();
+    void updatePrefrences(GlobalSettings settings){
+        setupfields(settings);
         String[] keywordstringArray = settings.getKeywords();
         String keywordString = keywordstringArray[0];
         for (int i = 1; i < keywordstringArray.length; i++){
@@ -62,7 +60,7 @@ class PreferencesFrame{
         keywords.setText(keywordString);
 
         settingsEdit.add(setupcontentPanel(),BorderLayout.CENTER);
-        settingsEdit.add(setupSouthPanel(),BorderLayout.SOUTH);
+        settingsEdit.add(setupSouthPanel(settings),BorderLayout.SOUTH);
         //Display the window.
         settingsEdit.pack();
         settingsEdit.setVisible(true);
@@ -96,7 +94,7 @@ class PreferencesFrame{
         return p;
     }
 
-    private JPanel setupSouthPanel(){
+    private JPanel setupSouthPanel(GlobalSettings settings){
         JButton save = new JButton("Save");
         save.addActionListener(e -> {
             if (mailServer.getText().equals("") || email.getText().equals("") || password.getText().equals("")) {

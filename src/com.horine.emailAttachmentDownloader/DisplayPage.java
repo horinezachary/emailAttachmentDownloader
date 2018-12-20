@@ -17,10 +17,9 @@ class DisplayPage {
     private PreferencesFrame prefFrame;
     private MessageSaver msgSaver;
 
-    public DisplayPage(GlobalSettings settings, EmailGetter getter) {
-        this.settings = settings;
-        this.getter = getter;
-        prefFrame = new PreferencesFrame(settings);
+    DisplayPage(ArrayList<GlobalSettings> settingsFiles) {
+        this.settingsFiles = settingsFiles;
+        prefFrame = new PreferencesFrame();
         msgSaver = new MessageSaver();
         frame = new JFrame("Attachment Downloader");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -105,20 +104,23 @@ class DisplayPage {
         JMenu runMenu = new JMenu("Run");
         menubar.add(runMenu);
 
-        JMenuItem run = new JMenuItem("Run Now");
-        run.addMouseListener(new MouseListener(){
-            @Override public void mouseClicked(MouseEvent e) {}
-            @Override public void mousePressed(MouseEvent e) {}
-            @Override public void mouseEntered(MouseEvent e) {}
-            @Override public void mouseExited(MouseEvent e)  {}
-            @Override public void mouseReleased(MouseEvent e) {
-                DisplayElem email = getter.fetch(settings.getKeywords());
-                addElement(email);
-            }
-        });
-        //JCheckBoxMenuItem startup = new JCheckBoxMenuItem("Run at Startup");
-        runMenu.add(run);
-
+        for (GlobalSettings settings : settingsFiles) {
+            JMenuItem run = new JMenuItem("Run " + settings.getFileName());
+            run.addMouseListener(new MouseListener() {
+                @Override public void mouseClicked(MouseEvent e) {}
+                @Override public void mousePressed(MouseEvent e) {}
+                @Override public void mouseEntered(MouseEvent e) { }
+                @Override public void mouseExited(MouseEvent e) { }
+                @Override public void mouseReleased(MouseEvent e) {
+                    ImageSaver imageSaver = new ImageSaver(settings.getSaveFolder());
+                    EmailGetter getter = new EmailGetter(settings.getPopHost(), settings.getStoreType(), settings.getAccount(), settings.getPassword(),imageSaver);
+                    DisplayElem email = getter.fetch(settings.getKeywords());
+                    addElement(email);
+                }
+            });
+            //JCheckBoxMenuItem startup = new JCheckBoxMenuItem("Run at Startup");
+            runMenu.add(run);
+        }
         //===HELP MENU====
         JMenu helpMenu = new JMenu("Help");
 
@@ -149,62 +151,70 @@ class DisplayPage {
             @Override public void mouseEntered(MouseEvent e) {}
             @Override public void mouseExited(MouseEvent e)  {}
             @Override public void mouseReleased(MouseEvent e) {
-                String file = chooseFile("settings.cfg",".cfg", "cfg");
-                if (file != null) {
-                    String oldPath = settings.getCfgFilepath();
-                    settings.setCfgFilepath(file);
-                    settings.getData();
-                    settings.setCfgFilepath(oldPath);
-                    settings.saveData();
-                }
+                String filepath = chooseFile("settings.cfg",".cfg", "cfg");
+                File file = new File(filepath);
+                GlobalSettings settings = new GlobalSettings(filepath);
+                settings.getData();
+                settings.setCfgFilepath("cfg/" + file.getName());
+                settings.saveData();
             }});
         filemenu.add(importSettings);
-        //===EXPORT SETTINGS====
-        JMenuItem exportSettings = new JMenuItem("Export Settings");
-        exportSettings.addMouseListener(new MouseListener(){
-            @Override public void mouseClicked(MouseEvent e) {}
-            @Override public void mousePressed(MouseEvent e) {}
-            @Override public void mouseEntered(MouseEvent e) {}
-            @Override public void mouseExited(MouseEvent e)  {}
-            @Override public void mouseReleased(MouseEvent e) {
-                String file = chooseFile("export.cfg",".cfg", "cfg");
-                if (file != null) {
-                    String oldPath = settings.getCfgFilepath();
-                    settings.setCfgFilepath(file);
-                    settings.saveData();
-                    settings.setCfgFilepath(oldPath);
+
+        for (GlobalSettings settings : settingsFiles) {
+            JMenu subMenu = new JMenu(settings.getFileName());
+
+            //===EXPORT SETTINGS====
+            JMenuItem exportSettings = new JMenuItem("Export Settings");
+            exportSettings.addMouseListener(new MouseListener() {
+                @Override public void mouseClicked(MouseEvent e) {}
+                @Override public void mousePressed(MouseEvent e) {}
+                @Override public void mouseEntered(MouseEvent e) {}
+                @Override public void mouseExited(MouseEvent e) {}
+                @Override public void mouseReleased(MouseEvent e) {
+                    String file = chooseFile("export.cfg", ".cfg", "cfg");
+                    if (file != null) {
+                        String oldPath = settings.getCfgFilepath();
+                        settings.setCfgFilepath(file);
+                        settings.saveData();
+                        settings.setCfgFilepath(oldPath);
+                    }
                 }
-            }});
-        filemenu.add(exportSettings);
-        filemenu.addSeparator();
+            });
+            subMenu.add(exportSettings);
+            //subMenu.addSeparator();
 
-        //===SAVE FOLDER====
-        JMenuItem saveFolder = new JMenuItem("Picture Save Folder");
-        saveFolder.addMouseListener(new MouseListener(){
-            @Override public void mouseClicked(MouseEvent e) {}
-            @Override public void mousePressed(MouseEvent e) {}
-            @Override public void mouseEntered(MouseEvent e) {}
-            @Override public void mouseExited(MouseEvent e)  {}
-            @Override public void mouseReleased(MouseEvent e) {
-                String folder = chooseFolder();
-                if (folder != null) {
-                    settings.setSaveFolder(folder);
+            //===SAVE FOLDER====
+            JMenuItem saveFolder = new JMenuItem("Picture Save Folder");
+            saveFolder.addMouseListener(new MouseListener() {
+                @Override public void mouseClicked(MouseEvent e) {}
+                @Override public void mousePressed(MouseEvent e) {}
+                @Override public void mouseEntered(MouseEvent e) {}
+                @Override public void mouseExited(MouseEvent e) {}
+                @Override public void mouseReleased(MouseEvent e) {
+                    String folder = chooseFolder();
+                    if (folder != null) {
+                        settings.setSaveFolder(folder);
+                    }
                 }
-            }});
-        filemenu.add(saveFolder);
+            });
+            subMenu.add(saveFolder);
 
-        //===PREFRENCES====
-        JMenuItem prefs = new JMenuItem("Prefrences");
-        filemenu.add(prefs);
-        prefs.addMouseListener(new MouseListener(){
-            @Override public void mouseClicked(MouseEvent e) {}
-            @Override public void mousePressed(MouseEvent e) {}
-            @Override public void mouseEntered(MouseEvent e) {}
-            @Override public void mouseExited(MouseEvent e)  {}
-            @Override public void mouseReleased(MouseEvent e) {
-                prefFrame.updatePrefrences();
-            }});
 
+            //===PREFRENCES====
+            JMenuItem prefs = new JMenuItem("Prefrences");
+            filemenu.add(prefs);
+            prefs.addMouseListener(new MouseListener() {
+                @Override public void mouseClicked(MouseEvent e) {}
+                @Override public void mousePressed(MouseEvent e) {}
+                @Override public void mouseEntered(MouseEvent e) {}
+                @Override public void mouseExited(MouseEvent e) {}
+                @Override public void mouseReleased(MouseEvent e) {
+                    prefFrame.updatePrefrences(settings);
+                }
+            });
+            subMenu.add(prefs);
+            filemenu.add(subMenu);
+        }
         return filemenu;
     }
 }
