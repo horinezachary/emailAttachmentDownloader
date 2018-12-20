@@ -8,10 +8,9 @@ import java.util.ArrayList;
 
 public class MessageSaver {
 
-    String filepath;
+    final String FILEPATH = ".messages";
 
-    public MessageSaver(String filepath){
-        this.filepath = filepath;
+    public MessageSaver(){
     }
 
     public void saveElements(ArrayList<DisplayElem> elements){
@@ -27,7 +26,7 @@ public class MessageSaver {
             dataout += elemString;
         }
 
-        File outFile = new File(filepath);
+        File outFile = new File(FILEPATH);
         try {
             FileOutputStream fos = new FileOutputStream(outFile);
             BASE64EncoderStream encodeStream = new BASE64EncoderStream(fos);
@@ -44,7 +43,7 @@ public class MessageSaver {
         ArrayList<DisplayElem> elements = new ArrayList<DisplayElem>();
 
         ArrayList<String> datain = new ArrayList<String>();
-        File infile = new File(filepath);
+        File infile = new File(FILEPATH);
         try {
             FileInputStream fis = new FileInputStream(infile);
             BASE64DecoderStream decodeStream = new BASE64DecoderStream(fis);

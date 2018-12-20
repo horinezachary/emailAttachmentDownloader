@@ -22,7 +22,7 @@ public class DisplayPage {
         this.settings = settings;
         this.getter = getter;
         prefFrame = new PreferencesFrame(settings);
-        msgSaver = new MessageSaver(".messages");
+        msgSaver = new MessageSaver();
         frame = new JFrame("Attachment Downloader");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setMinimumSize(new Dimension(400,400));
