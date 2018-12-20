@@ -32,8 +32,9 @@ public class DisplayPage {
         frame.setResizable(false);
         frame.setLayout(new BorderLayout());
         frame.setJMenuBar(generateMenu());
-        elements = msgSaver.loadElements(this);
         elementPanel = new JPanel();
+        elements = new ArrayList<DisplayElem>();
+        msgSaver.loadElements(this);
         BoxLayout elementPanelLayout = new BoxLayout(elementPanel, BoxLayout.PAGE_AXIS);
         elementPanel.setSize(370,400);
         elementPanel.setLayout(elementPanelLayout);
