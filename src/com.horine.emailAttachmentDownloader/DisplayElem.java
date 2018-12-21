@@ -14,11 +14,11 @@ import java.util.Date;
 
 public class DisplayElem extends JPanel{
 
-    String date;
-    String text;
-    boolean onScreen;
+    private String date;
+    private String text;
+    private boolean onScreen;
     boolean toRemove;
-    DisplayPage page;
+    private DisplayPage page;
 
     public DisplayElem(){
         super();
@@ -32,7 +32,7 @@ public class DisplayElem extends JPanel{
         setupFrame();
     }
 
-    public DisplayElem(String text){
+    DisplayElem(String text){
         super();
         SimpleDateFormat sdf = new SimpleDateFormat("MM/dd/yy hh:mm a");
         Date dt = new Date();
@@ -43,7 +43,7 @@ public class DisplayElem extends JPanel{
         setupFrame();
     }
 
-    public DisplayElem(String date, String text){
+    DisplayElem(String date, String text){
         super();
         this.date = date;
         this.text = text;
@@ -54,9 +54,8 @@ public class DisplayElem extends JPanel{
     private void setupFrame(){
         setMaximumSize(new Dimension(400,100));
         setMinimumSize(new Dimension(380,100));
-
+        setPreferredSize(new Dimension(387, 30 + (int)(Math.ceil((double)text.length()/40) * 16) + 10));
         setLayout(new BorderLayout());
-        setPreferredSize(new Dimension(387,100));
         setBorder(BorderFactory.createBevelBorder(0));
         setBackground(Color.ORANGE);
         setToolTipText(text);
@@ -69,22 +68,22 @@ public class DisplayElem extends JPanel{
         page.update();
     }
 
-    public void setOnScreen(boolean onScreen) {
+    void setOnScreen(boolean onScreen) {
         this.onScreen = onScreen;
     }
-    public boolean getOnScreen(){
+    boolean getOnScreen(){
         return onScreen;
     }
 
-    public void setPage(DisplayPage page){
+    void setPage(DisplayPage page){
         this.page = page;
     }
 
-    public String getDate(){
+    String getDate(){
         return this.date;
     }
 
-    public String getText() {
+    String getText() {
         return text;
     }
 
@@ -122,7 +121,7 @@ public class DisplayElem extends JPanel{
         datePane.setText(date);
         datePane.setEditable(false);
         datePane.setBackground(this.getBackground());
-        datePane.setMargin(new Insets(5,5,5,5));
+        datePane.setMargin(new Insets(5,5,0,5));
         JTextPane textPane = new JTextPane();
         textPane.setText(text);
         textPane.setEditable(false);

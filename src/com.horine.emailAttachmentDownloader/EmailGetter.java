@@ -9,13 +9,13 @@ import java.util.Properties;
 
 public class EmailGetter {
 
-    static String host;
-    static String storeType;
-    static String user;
-    static String password;
-    static Properties properties;
+    private String host;
+    private String storeType;
+    private String user;
+    private String password;
+    private Properties properties;
 
-    static ImageSaver imageSaver;
+    private static ImageSaver imageSaver;
 
     /*
     @param host "pop.gmail.com";
@@ -24,7 +24,7 @@ public class EmailGetter {
     @param password = "*****";
      */
 
-    public EmailGetter(String pop3Host, String storeType, String user, String password, ImageSaver imageSaver) {
+    EmailGetter(String pop3Host, String storeType, String user, String password, ImageSaver imageSaver) {
         this.host = pop3Host;
         this.storeType = storeType;
         this.user = user;
@@ -39,7 +39,7 @@ public class EmailGetter {
 
         this.imageSaver = imageSaver;
     }
-    public static DisplayElem fetch(String[] keywords) {
+    DisplayElem fetch(String[] keywords) {
         int numImages = 0;
         int numEmails = 0;
         int presavedImages = 0;
