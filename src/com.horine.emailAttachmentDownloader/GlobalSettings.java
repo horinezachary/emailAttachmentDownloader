@@ -118,6 +118,7 @@ public class GlobalSettings {
 
     void setCfgFilepath(String cfgFilepath) {
         this.cfgFilepath = cfgFilepath;
+        setFileName(cfgFilepath);
     }
 
     String getSaveFolder() {
