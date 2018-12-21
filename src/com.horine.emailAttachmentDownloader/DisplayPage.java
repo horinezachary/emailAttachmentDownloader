@@ -118,9 +118,21 @@ class DisplayPage {
                     addElement(email);
                 }
             });
-            //JCheckBoxMenuItem startup = new JCheckBoxMenuItem("Run at Startup");
             runMenu.add(run);
         }
+        runMenu.addSeparator();
+        JMenuItem startup = new JMenuItem("Run on Startup...");
+        startup.addMouseListener(new MouseListener() {
+            @Override public void mouseClicked(MouseEvent e) {}
+            @Override public void mousePressed(MouseEvent e) {}
+            @Override public void mouseEntered(MouseEvent e) { }
+            @Override public void mouseExited(MouseEvent e) { }
+            @Override public void mouseReleased(MouseEvent e) {
+                startupFrame();
+            }
+        });
+        runMenu.add(startup);
+
         //===HELP MENU====
         JMenu helpMenu = new JMenu("Help");
 
@@ -138,6 +150,40 @@ class DisplayPage {
         menubar.add(helpMenu);
 
         return menubar;
+    }
+
+    private void startupFrame() {
+        JFrame startupChooser = new JFrame("onStart");
+        startupChooser.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+        startupChooser.setSize(200,50 + settingsFiles.size()*20);
+        startupChooser.setLocation(300,200);
+        startupChooser.setLayout(new BorderLayout());
+        JPanel panel = new JPanel();
+        panel.setLayout(new BoxLayout(panel,BoxLayout.PAGE_AXIS));
+        for(GlobalSettings s: settingsFiles){
+            JCheckBox box = new JCheckBox(s.getFileName());
+            box.setSelected(s.getOnstartup());
+            box.addActionListener(e -> {
+                s.setOnStartup(box.isSelected());
+                System.out.println(box.isSelected());
+                System.out.println(s.getOnstartup());
+            });
+            panel.add(box);
+        }
+        startupChooser.add(panel, BorderLayout.CENTER);
+        JButton done = new JButton("Done");
+        done.addActionListener(e -> {
+            for (GlobalSettings s: settingsFiles){
+                s.saveData();
+            }
+            startupChooser.dispose();
+        });
+        JPanel south = new JPanel(new FlowLayout());
+        south.add(done);
+        south.setOpaque(true);
+        startupChooser.add(south, BorderLayout.SOUTH);
+        startupChooser.pack();
+        startupChooser.setVisible(true);
     }
 
     private JMenu generateFileMenu(){
