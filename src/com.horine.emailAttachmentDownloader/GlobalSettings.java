@@ -17,10 +17,22 @@ public class GlobalSettings {
     private String[] keywords;
     private boolean onStartup;
 
-
+    /*
+    @param host "pop.gmail.com";
+    @param mailStoreType = "pop3";
+    @param username = "abc@gmail.com";
+    @param password = "*****";
+     */
 
     GlobalSettings(String cfgFilepath){
         this.cfgFilepath = cfgFilepath;
+        setFileName(cfgFilepath);
+        saveFolder = null;
+        popHost = "pop.gmail.com";
+        storeType = "pop3";
+        account = "";
+        password = "";
+        setKeywords("");
         this.onStartup = false;
     }
 

@@ -189,6 +189,52 @@ class DisplayPage {
     private JMenu generateFileMenu(){
         JMenu filemenu = new JMenu("File");
 
+        //===CREATE NEW===
+        JMenuItem createNew = new JMenuItem("Create Profile");
+        createNew.addMouseListener(new MouseListener(){
+            @Override public void mouseClicked(MouseEvent e) {}
+            @Override public void mousePressed(MouseEvent e) {}
+            @Override public void mouseEntered(MouseEvent e) {}
+            @Override public void mouseExited(MouseEvent e)  {}
+            @Override public void mouseReleased(MouseEvent e) {
+                GlobalSettings settings = new GlobalSettings("");
+
+                JFrame filenameFrame = new JFrame("Filename");
+                filenameFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+                filenameFrame.setSize(300,100);
+                filenameFrame.setLocation(300,200);
+                filenameFrame.setLayout(new BorderLayout());
+                JPanel panel = new JPanel();
+                panel.setLayout(new FlowLayout());
+                JTextField field = new JTextField();
+                field.setPreferredSize(new Dimension(200,20));
+                panel.add(field);
+                filenameFrame.add(panel, BorderLayout.CENTER);
+                JButton done = new JButton("Done");
+                done.addActionListener(f -> {
+                    String substring;
+                    if (field.getText().contains(".")){
+                        substring = field.getText().substring(0,field.getText().lastIndexOf("."));
+                    }
+                    else {
+                        substring = field.getText();
+                    }
+                    settings.setCfgFilepath("cfg/" + substring + ".cfg");
+                    filenameFrame.dispose();
+                    settings.setSaveFolder(chooseFolder());
+                    prefFrame.updatePrefrences(settings);
+                    settings.saveData();
+                    settingsFiles.add(settings);
+                });
+                JPanel south = new JPanel(new FlowLayout());
+                south.add(done);
+                south.setOpaque(true);
+                filenameFrame.add(south, BorderLayout.SOUTH);
+                filenameFrame.pack();
+                filenameFrame.setVisible(true);
+            }});
+        filemenu.add(createNew);
+
         //===IMPORT SETTINGS====
         JMenuItem importSettings = new JMenuItem("Import Settings");
         importSettings.addMouseListener(new MouseListener(){
@@ -205,6 +251,7 @@ class DisplayPage {
                 settings.saveData();
             }});
         filemenu.add(importSettings);
+        filemenu.addSeparator();
 
         for (GlobalSettings settings : settingsFiles) {
             JMenu subMenu = new JMenu(settings.getFileName());
