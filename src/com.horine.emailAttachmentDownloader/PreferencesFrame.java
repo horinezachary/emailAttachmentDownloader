@@ -110,7 +110,10 @@ class PreferencesFrame{
             }
         });
         JButton cancel = new JButton("Cancel");
-        cancel.addActionListener(e -> settingsEdit.dispose());
+        cancel.addActionListener(e -> {
+            settingsEdit.dispose();
+            //TODO catch unfilled form data
+        });
 
         JPanel south = new JPanel(new FlowLayout());
         south.add(save);
