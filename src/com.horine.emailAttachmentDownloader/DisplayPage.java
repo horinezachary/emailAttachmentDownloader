@@ -15,12 +15,15 @@ class DisplayPage {
     private JFrame frame;
     private ArrayList<GlobalSettings> settingsFiles;
     private MessageSaver msgSaver;
+    private RunQueue runQueue;
 
     private JMenu runMenu;
     private JMenu filemenu;
 
-    DisplayPage(ArrayList<GlobalSettings> settingsFiles) {
+    DisplayPage(ArrayList<GlobalSettings> settingsFiles, RunQueue runQueue) {
         this.settingsFiles = settingsFiles;
+        this.runQueue = runQueue;
+        runQueue.setDisplayPage(this);
         msgSaver = new MessageSaver();
         frame = new JFrame("Attachment Downloader");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -146,13 +149,10 @@ class DisplayPage {
         run.addMouseListener(new MouseListener() {
             @Override public void mouseClicked(MouseEvent e) {}
             @Override public void mousePressed(MouseEvent e) {}
-            @Override public void mouseEntered(MouseEvent e) { }
-            @Override public void mouseExited(MouseEvent e) { }
+            @Override public void mouseEntered(MouseEvent e) {}
+            @Override public void mouseExited(MouseEvent e) {}
             @Override public void mouseReleased(MouseEvent e) {
-                ImageSaver imageSaver = new ImageSaver(settings.getSaveFolder());
-                EmailGetter getter = new EmailGetter(settings.getPopHost(), settings.getStoreType(), settings.getAccount(), settings.getPassword(),imageSaver);
-                DisplayElem email = getter.fetch(settings.getKeywords());
-                addElement(email);
+                runQueue.add(settings,false);
             }
         });
         runMenu.add(run);

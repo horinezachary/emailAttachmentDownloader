@@ -16,6 +16,8 @@ public class GlobalSettings {
     private String password;
     private String[] keywords;
     private boolean onStartup;
+    private int schedule;
+    private long lastRuntime;
 
     /*
     @param host "pop.gmail.com";
@@ -34,6 +36,8 @@ public class GlobalSettings {
         password = "";
         setKeywords("");
         this.onStartup = false;
+        this.schedule = -1;
+        this.lastRuntime = 0;
     }
 
     void getData() {
@@ -203,5 +207,21 @@ public class GlobalSettings {
             }
         }
         this.setKeywords(splitString);
+    }
+
+    public int getSchedule() {
+        return schedule;
+    }
+
+    public void setSchedule(int schedule) {
+        this.schedule = schedule;
+    }
+
+    public long getLastRuntime() {
+        return lastRuntime;
+    }
+
+    public void setLastRuntime(long lastRuntime) {
+        this.lastRuntime = lastRuntime;
     }
 }

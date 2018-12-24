@@ -6,7 +6,6 @@ import java.util.ArrayList;
 
 public class Main {
 
-
     private Main(){
         ArrayList<GlobalSettings> settingsFiles = new ArrayList<GlobalSettings>();
         File[] files = new File("cfg").listFiles();
@@ -18,18 +17,16 @@ public class Main {
             }
         }
         System.out.println(settingsFiles.size());
-        DisplayPage displayPage = new DisplayPage(settingsFiles);
+        RunQueue runQueue = new RunQueue();
+        DisplayPage displayPage = new DisplayPage(settingsFiles, runQueue);
+        runQueue.setDisplayPage(displayPage);
 
         for (GlobalSettings settings : settingsFiles) {
             if (settings.getOnstartup()) {
                 if (settings.getSaveFolder() == null) {
                     settings.setSaveFolder(displayPage.chooseFolder());
                 }
-                ImageSaver imageSaver = new ImageSaver(settings.getSaveFolder());
-                EmailGetter getter = new EmailGetter(settings.getPopHost(), settings.getStoreType(), settings.getAccount(), settings.getPassword(), imageSaver);
-                DisplayElem elem = getter.fetch(settings.getKeywords());
-                displayPage.addElement(elem);
-                settings.saveData();
+                runQueue.add(settings,false);
             }
         }
     }
