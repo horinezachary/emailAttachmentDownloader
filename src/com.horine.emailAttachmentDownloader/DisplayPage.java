@@ -53,7 +53,7 @@ class DisplayPage {
         for (int i = 0; i < elements.size(); i++){
             if (!elements.get(i).getOnScreen()){
                 elements.get(i).setOnScreen(true);
-                elementPanel.add(elements.get(i));
+                elementPanel.add(elements.get(i),0);
             }
             else if (elements.get(i).getOnScreen()){
                 if (elements.get(i).toRemove){
