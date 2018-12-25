@@ -15,12 +15,15 @@ class DisplayPage {
     private JFrame frame;
     private ArrayList<GlobalSettings> settingsFiles;
     private MessageSaver msgSaver;
+    private RunQueue runQueue;
 
     private JMenu runMenu;
     private JMenu filemenu;
 
-    DisplayPage(ArrayList<GlobalSettings> settingsFiles) {
+    DisplayPage(ArrayList<GlobalSettings> settingsFiles, RunQueue runQueue) {
         this.settingsFiles = settingsFiles;
+        this.runQueue = runQueue;
+        runQueue.setDisplayPage(this);
         msgSaver = new MessageSaver();
         frame = new JFrame("Attachment Downloader");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -62,7 +65,7 @@ class DisplayPage {
         msgSaver.saveElements(elements);
         frame.pack();
         elementPanel.updateUI();
-        frame.setVisible(true);
+        //frame.setVisible(true);
     }
 
     void addElement(DisplayElem element){
@@ -115,7 +118,20 @@ class DisplayPage {
                 startupFrame();
             }
         });
+
+        JMenuItem schedule = new JMenuItem("Run on Schedule");
+        schedule.addMouseListener(new MouseListener() {
+            @Override public void mouseClicked(MouseEvent e) {}
+            @Override public void mousePressed(MouseEvent e) {}
+            @Override public void mouseEntered(MouseEvent e) { }
+            @Override public void mouseExited(MouseEvent e) { }
+            @Override public void mouseReleased(MouseEvent e) {
+                scheduleFrame();
+            }
+        });
+
         runMenu.add(startup);
+        runMenu.add(schedule);
         runMenu.addSeparator();
 
         for (GlobalSettings settings : settingsFiles) {
@@ -146,13 +162,10 @@ class DisplayPage {
         run.addMouseListener(new MouseListener() {
             @Override public void mouseClicked(MouseEvent e) {}
             @Override public void mousePressed(MouseEvent e) {}
-            @Override public void mouseEntered(MouseEvent e) { }
-            @Override public void mouseExited(MouseEvent e) { }
+            @Override public void mouseEntered(MouseEvent e) {}
+            @Override public void mouseExited(MouseEvent e) {}
             @Override public void mouseReleased(MouseEvent e) {
-                ImageSaver imageSaver = new ImageSaver(settings.getSaveFolder());
-                EmailGetter getter = new EmailGetter(settings.getPopHost(), settings.getStoreType(), settings.getAccount(), settings.getPassword(),imageSaver);
-                DisplayElem email = getter.fetch(settings.getKeywords());
-                addElement(email);
+                runQueue.add(settings);
             }
         });
         runMenu.add(run);
@@ -190,6 +203,74 @@ class DisplayPage {
         startupChooser.add(south, BorderLayout.SOUTH);
         startupChooser.pack();
         startupChooser.setVisible(true);
+    }
+
+    private void scheduleFrame() {
+        JFrame scheduleChooser = new JFrame("Scheduler");
+        scheduleChooser.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+        scheduleChooser.setPreferredSize(new Dimension(500,50 + settingsFiles.size()*50));
+        scheduleChooser.setLocation(300,200);
+        scheduleChooser.setLayout(new BorderLayout());
+        JPanel panel = new JPanel();
+        panel.setLayout(new BoxLayout(panel,BoxLayout.PAGE_AXIS));
+        ArrayList<JTextField> scheduleNums = new ArrayList<JTextField>();
+        for(GlobalSettings s: settingsFiles){
+            JPanel row = new JPanel();
+            row.setLayout(new FlowLayout());
+            JLabel label = new JLabel(s.getFileName() + ": ");
+            label.setComponentOrientation( ComponentOrientation.RIGHT_TO_LEFT );
+            label.setPreferredSize(new Dimension(100,30));
+            row.add(label);
+            JCheckBox box = new JCheckBox("Scheduled");
+            box.setSelected(s.getScheduled());
+            box.addActionListener(e -> {
+                s.setScheduled(box.isSelected());
+                System.out.println(box.isSelected());
+                System.out.println(s.getOnstartup());
+            });
+            row.add(box);
+
+            JTextField number = new JTextField();
+            number.setDocument(new JTextFieldFilter());
+            number.setPreferredSize(new Dimension(100,30));
+            number.setText(Integer.toString(s.getSchedule()));
+            scheduleNums.add(number);
+            row.add(number);
+
+            JComboBox<String> timeUnits = new JComboBox<String>();
+            timeUnits.setPreferredSize(new Dimension(100,30));
+            timeUnits.addItem("Seconds");
+            timeUnits.addItem("Minutes");
+            timeUnits.addItem("Hours");
+            timeUnits.addItem("Days");
+            if (s.getTimeMultuplier() == s.SECONDS){timeUnits.setSelectedIndex(0);}
+            if (s.getTimeMultuplier() == s.MINUTES){timeUnits.setSelectedIndex(1);}
+            if (s.getTimeMultuplier() == s.HOURS){timeUnits.setSelectedIndex(2);}
+            if (s.getTimeMultuplier() == s.DAYS){timeUnits.setSelectedIndex(3);}
+            timeUnits.addItemListener(e -> {
+                if (timeUnits.getSelectedItem().equals(timeUnits.getItemAt(0))){s.setTimeMultuplier(s.SECONDS);}
+                if (timeUnits.getSelectedItem().equals(timeUnits.getItemAt(1))){s.setTimeMultuplier(s.MINUTES);}
+                if (timeUnits.getSelectedItem().equals(timeUnits.getItemAt(2))){s.setTimeMultuplier(s.HOURS);}
+                if (timeUnits.getSelectedItem().equals(timeUnits.getItemAt(3))){s.setTimeMultuplier(s.DAYS);}
+            });
+            row.add(timeUnits);
+            panel.add(row);
+        }
+        scheduleChooser.add(panel, BorderLayout.CENTER);
+        JButton done = new JButton("Done");
+        done.addActionListener(e -> {
+            for (GlobalSettings s: settingsFiles){
+                s.setSchedule(scheduleNums.get(settingsFiles.indexOf(s)).getText());
+                s.saveData();
+            }
+            scheduleChooser.dispose();
+        });
+        JPanel south = new JPanel(new FlowLayout());
+        south.add(done);
+        south.setOpaque(true);
+        scheduleChooser.add(south, BorderLayout.SOUTH);
+        scheduleChooser.pack();
+        scheduleChooser.setVisible(true);
     }
 
     private JMenu generateFileMenu(){

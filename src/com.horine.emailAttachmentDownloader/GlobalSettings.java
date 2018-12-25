@@ -7,6 +7,12 @@ import java.io.*;
 import java.nio.charset.StandardCharsets;
 
 public class GlobalSettings {
+
+    static int SECONDS = 1000;
+    static int MINUTES = SECONDS*60;
+    static int HOURS   = MINUTES*60;
+    static int DAYS    = HOURS*24;
+
     private String cfgFilepath;
     private String fileName;
     private String saveFolder;
@@ -16,6 +22,10 @@ public class GlobalSettings {
     private String password;
     private String[] keywords;
     private boolean onStartup;
+    private boolean scheduled;
+    private int schedule;
+    private int timeMultuplier;
+    private long lastRuntime;
 
     /*
     @param host "pop.gmail.com";
@@ -34,6 +44,10 @@ public class GlobalSettings {
         password = "";
         setKeywords("");
         this.onStartup = false;
+        this.scheduled = false;
+        this.schedule = 1;
+        this.timeMultuplier = SECONDS;
+        this.lastRuntime = 0;
     }
 
     void getData() {
@@ -68,6 +82,9 @@ public class GlobalSettings {
             setKeywords(splitvals[5]);
         }
         setOnStartup(splitvals[6]);
+        setScheduled(splitvals[7]);
+        setSchedule(splitvals[8]);
+        setTimeMultuplier(Integer.parseInt(splitvals[9]));
         setFileName(cfgFilepath);
     }
 
@@ -89,6 +106,25 @@ public class GlobalSettings {
         return this.onStartup;
     }
 
+    private void setScheduled(String str) {
+        if (str.equals("true")){this.scheduled = true;}
+        else if (str.equals("false")){this.scheduled = false;}
+    }
+    public void setScheduled(boolean scheduled){
+        this.scheduled = scheduled;
+    }
+    boolean getScheduled(){
+        return this.scheduled;
+    }
+
+    public int getTimeMultuplier() {
+        return timeMultuplier;
+    }
+
+    public void setTimeMultuplier(int timeMultuplier) {
+        this.timeMultuplier = timeMultuplier;
+    }
+
     void saveData(){
         String dataout = "";
         dataout += saveFolder + ";"
@@ -97,7 +133,10 @@ public class GlobalSettings {
                 + popHost + ";"
                 + storeType + ";"
                 + getKeywordString() + ";"
-                + onStartup + ";";
+                + onStartup + ";"
+                + scheduled + ";"
+                + schedule + ";"
+                + timeMultuplier + ";";
         File outFile = new File(cfgFilepath);
         try {
             FileOutputStream fos = new FileOutputStream(outFile);
@@ -203,5 +242,26 @@ public class GlobalSettings {
             }
         }
         this.setKeywords(splitString);
+    }
+
+    public int getSchedule() {
+        return schedule;
+    }
+
+    public void setSchedule(String schedule) {
+        System.out.println(schedule);
+        this.schedule = Integer.parseInt(schedule);
+    }
+
+    public void setSchedule(int schedule) {
+        this.schedule = schedule;
+    }
+
+    public long getLastRuntime() {
+        return lastRuntime;
+    }
+
+    public void setLastRuntime(long lastRuntime) {
+        this.lastRuntime = lastRuntime;
     }
 }
