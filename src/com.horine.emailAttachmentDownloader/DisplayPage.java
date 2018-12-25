@@ -165,7 +165,7 @@ class DisplayPage {
             @Override public void mouseEntered(MouseEvent e) {}
             @Override public void mouseExited(MouseEvent e) {}
             @Override public void mouseReleased(MouseEvent e) {
-                runQueue.add(settings,false);
+                runQueue.add(settings);
             }
         });
         runMenu.add(run);

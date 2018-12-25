@@ -1,5 +1,6 @@
 package com.horine.emailAttachmentDownloader;
 
+import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.Queue;
 
@@ -7,16 +8,16 @@ public class RunQueue implements Runnable {
 
     private DisplayPage displayPage;
     private Queue<GlobalSettings> queue;
-    private Queue<GlobalSettings> scheduledQueue;
+    private ArrayList<GlobalSettings> settingsFiles;
     private Thread t;
     private boolean running;
     private long lastCheck;
     private long checkTime;
 
-    RunQueue(){
+    RunQueue(ArrayList<GlobalSettings> settingsFiles){
+        this.settingsFiles = settingsFiles;
         this.displayPage = null;
         queue = new LinkedList<GlobalSettings>();
-        scheduledQueue = new LinkedList<GlobalSettings>();
         running = false;
         checkTime = 60000;
         checkTime = 10;
@@ -27,15 +28,10 @@ public class RunQueue implements Runnable {
         this.displayPage = displayPage;
     }
 
-    void add(GlobalSettings settings, boolean scheduled){
+    void add(GlobalSettings settings){
         System.out.println("ADD");
         System.out.println(t.getState());
-        if (scheduled){
-            scheduledQueue.add(settings);
-        }
-        else {
-            queue.add(settings);
-        }
+        queue.add(settings);
         if (!t.getState().name().equals("RUNNABLE")) {
             t.start();
         }
@@ -50,19 +46,19 @@ public class RunQueue implements Runnable {
                 GlobalSettings settings = queue.poll();
                 System.out.println(settings.getFileName());
                 ImageSaver imageSaver = new ImageSaver(settings.getSaveFolder());
-                EmailGetter getter = new EmailGetter(settings.getPopHost(), settings.getStoreType(), settings.getAccount(), settings.getPassword(), imageSaver);
+                EmailGetter getter = new EmailGetter(settings.getFileName(), settings.getPopHost(), settings.getStoreType(), settings.getAccount(), settings.getPassword(), imageSaver);
                 DisplayElem email = getter.fetch(settings.getKeywords());
                 displayPage.addElement(email);
                 settings.setLastRuntime(System.currentTimeMillis());
             }
-            else{
+            /*else{
                 System.out.println("NULL");
-            }
-            if(scheduledQueue.peek() != null){
-                GlobalSettings settings = scheduledQueue.peek();
-                if (settings.getLastRuntime() + settings.getSchedule() <= System.currentTimeMillis()) {
-                    scheduledQueue.remove();
-                    queue.add(settings);
+            }*/
+            for (GlobalSettings settings: settingsFiles){
+                if (settings.getScheduled()) {
+                    if (settings.getLastRuntime() + settings.getSchedule() * settings.getTimeMultuplier() <= System.currentTimeMillis()) {
+                        queue.add(settings);
+                    }
                 }
             }
         }

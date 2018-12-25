@@ -17,7 +17,7 @@ public class Main {
             }
         }
         System.out.println(settingsFiles.size());
-        RunQueue runQueue = new RunQueue();
+        RunQueue runQueue = new RunQueue(settingsFiles);
         DisplayPage displayPage = new DisplayPage(settingsFiles, runQueue);
         runQueue.setDisplayPage(displayPage);
 
@@ -26,7 +26,7 @@ public class Main {
                 if (settings.getSaveFolder() == null) {
                     settings.setSaveFolder(displayPage.chooseFolder());
                 }
-                runQueue.add(settings,false);
+                runQueue.add(settings);
             }
         }
     }
