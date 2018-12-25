@@ -58,7 +58,6 @@ public class DisplayElem extends JPanel{
         setLayout(new BorderLayout());
         setBorder(BorderFactory.createBevelBorder(0));
         setBackground(Color.ORANGE);
-        setToolTipText(text);
         add(setupLeftPane());
         addCloseButton();
     }
