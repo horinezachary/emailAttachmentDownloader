@@ -188,8 +188,6 @@ class DisplayPage {
             box.setSelected(s.getOnstartup());
             box.addActionListener(e -> {
                 s.setOnStartup(box.isSelected());
-                System.out.println(box.isSelected());
-                System.out.println(s.getOnstartup());
             });
             panel.add(box);
         }
@@ -229,8 +227,6 @@ class DisplayPage {
             box.setSelected(s.getScheduled());
             box.addActionListener(e -> {
                 s.setScheduled(box.isSelected());
-                System.out.println(box.isSelected());
-                System.out.println(s.getOnstartup());
             });
             row.add(box);
 

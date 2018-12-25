@@ -249,7 +249,6 @@ public class GlobalSettings {
     }
 
     public void setSchedule(String schedule) {
-        System.out.println(schedule);
         this.schedule = Integer.parseInt(schedule);
     }
 

@@ -29,8 +29,6 @@ public class RunQueue implements Runnable {
     }
 
     void add(GlobalSettings settings){
-        System.out.println("ADD");
-        System.out.println(t.getState());
         queue.add(settings);
         if (!t.getState().name().equals("RUNNABLE")) {
             t.start();
