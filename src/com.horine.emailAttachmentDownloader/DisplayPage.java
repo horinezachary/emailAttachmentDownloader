@@ -62,6 +62,10 @@ class DisplayPage {
                 }
             }
         }
+        while(elements.size() > 25){
+            elementPanel.remove(elements.get(0));
+            elements.remove(0);
+        }
         msgSaver.saveElements(elements);
         frame.pack();
         elementPanel.updateUI();
