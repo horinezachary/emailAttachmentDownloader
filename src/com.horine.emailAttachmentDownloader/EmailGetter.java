@@ -9,6 +9,7 @@ import java.util.Properties;
 
 public class EmailGetter {
 
+    private String filename;
     private String host;
     private String storeType;
     private String user;
@@ -24,7 +25,8 @@ public class EmailGetter {
     @param password = "*****";
      */
 
-    EmailGetter(String pop3Host, String storeType, String user, String password, ImageSaver imageSaver) {
+    EmailGetter(String filename, String pop3Host, String storeType, String user, String password, ImageSaver imageSaver) {
+        this.filename = filename;
         this.host = pop3Host;
         this.storeType = storeType;
         this.user = user;
@@ -114,8 +116,8 @@ public class EmailGetter {
             e.printStackTrace();
         }
         String text = "";
-        if (keywords.length <= 1){text =  "Ran and found " + numEmails + " e-mails";}
-        else {                    text =  "Ran and found " + numEmails + " matching e-mails";}
+        if (keywords.length <= 1){text =  "Ran " + filename + " and found " + numEmails + " e-mails";}
+        else {                    text =  "Ran " + filename + " and found " + numEmails + " matching e-mails";}
         if (numEmails > 0){       text += " with " + numImages + " new images";}
         if (presavedImages > 0)  {text += " and " + presavedImages + " existing images";}
         if (numImages > 0){       text += ". Pictures saved to " + imageSaver.getFolderPath();}
