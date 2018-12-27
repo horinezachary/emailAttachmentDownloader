@@ -85,6 +85,7 @@ class DisplayPage {
         fileChooser.showOpenDialog(frame);
         File selectedfile = fileChooser.getSelectedFile();
         filepath = selectedfile.getAbsolutePath();
+        System.out.println(filepath);
         return filepath;
     }
 
@@ -169,6 +170,7 @@ class DisplayPage {
             @Override public void mouseEntered(MouseEvent e) {}
             @Override public void mouseExited(MouseEvent e) {}
             @Override public void mouseReleased(MouseEvent e) {
+                System.out.println("RUN: " + settings.getFileName());
                 runQueue.add(settings);
             }
         });
@@ -210,7 +212,7 @@ class DisplayPage {
     private void scheduleFrame() {
         JFrame scheduleChooser = new JFrame("Scheduler");
         scheduleChooser.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
-        scheduleChooser.setPreferredSize(new Dimension(500,50 + settingsFiles.size()*50));
+        scheduleChooser.setPreferredSize(new Dimension(500,50 + settingsFiles.size()*60));
         scheduleChooser.setLocation(300,200);
         scheduleChooser.setLayout(new BorderLayout());
         JPanel panel = new JPanel();
@@ -306,7 +308,7 @@ class DisplayPage {
                     else {
                         substring = field.getText();
                     }
-                    settings.setCfgFilepath("cfg/" + substring + ".cfg");
+                    settings.setCfgFilepath("cfg\\" + substring + ".cfg");
                     filenameFrame.dispose();
                     settings.setSaveFolder(chooseFolder());
                     PreferencesFrame prefFrame = new PreferencesFrame();
@@ -338,7 +340,7 @@ class DisplayPage {
                 File file = new File(filepath);
                 GlobalSettings settings = new GlobalSettings(filepath);
                 settings.getData();
-                settings.setCfgFilepath("cfg/" + file.getName());
+                settings.setCfgFilepath("cfg\\" + file.getName());
                 settings.saveData();
                 createCfgFileMenu(settings);
                 createCfgRunMenu(settings);

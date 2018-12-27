@@ -87,13 +87,7 @@ public class DisplayElem extends JPanel{
     }
 
     private void addCloseButton(){
-        BufferedImage buttonIcon = null;
-        try {
-            buttonIcon = ImageIO.read(new File("src/close.png"));
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-        JButton closeButton = new JButton(new ImageIcon(buttonIcon));
+        JButton closeButton = new JButton(new ImageIcon(Thread.currentThread().getContextClassLoader().getResource("images/close.png")));
         closeButton.addMouseListener(new MouseListener() {
             @Override public void mouseClicked(MouseEvent e) {}
             @Override public void mousePressed(MouseEvent e) {}

@@ -31,7 +31,7 @@ class ImageSaver {
             return true;
         }
 
-        File file = new File(folderPath + "/" + newfilename);
+        File file = new File(folderPath + "\\" + newfilename);
         FileOutputStream fos = new FileOutputStream(file);
 
         /*

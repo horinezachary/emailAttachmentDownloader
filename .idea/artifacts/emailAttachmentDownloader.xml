@@ -1,0 +1,10 @@
+<component name="ArtifactManager">
+  <artifact type="jar" build-on-make="true" name="emailAttachmentDownloader">
+    <output-path>$PROJECT_DIR$/out/artifacts/</output-path>
+    <root id="archive" name="emailAttachmentDownloader.jar">
+      <element id="module-output" name="emailAttachmentDownloader" />
+      <element id="extracted-dir" path="$PROJECT_DIR$/../activation.jar" path-in-jar="/" />
+      <element id="extracted-dir" path="$PROJECT_DIR$/../javax.mail.jar" path-in-jar="/" />
+    </root>
+  </artifact>
+</component>

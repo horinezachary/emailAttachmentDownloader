@@ -42,6 +42,7 @@ public class RunQueue implements Runnable {
         while (running) {
             //System.out.println(queue.peek().getFileName());
             if (queue.peek() != null) {
+	            System.out.println(queue.peek().getFileName());
                 GlobalSettings settings = queue.poll();
                 System.out.println(settings.getFileName());
                 ImageSaver imageSaver = new ImageSaver(settings.getSaveFolder());
@@ -50,9 +51,9 @@ public class RunQueue implements Runnable {
                 displayPage.addElement(email);
                 settings.setLastRuntime(System.currentTimeMillis());
             }
-            /*else{
+            else{
                 System.out.println("NULL");
-            }*/
+            }
             for (GlobalSettings settings: settingsFiles){
                 if (settings.getScheduled()) {
                     if (settings.getLastRuntime() + settings.getSchedule() * settings.getTimeMultuplier() <= System.currentTimeMillis()) {
