@@ -89,7 +89,8 @@ public class GlobalSettings {
     }
 
     private void setFileName(String cfgFilepath) {
-        this.fileName = cfgFilepath.substring(cfgFilepath.lastIndexOf("/")+1);
+        //this.fileName = cfgFilepath.substring(cfgFilepath.lastIndexOf("/")+1);
+        this.fileName = cfgFilepath.substring(cfgFilepath.lastIndexOf("\\")+1);
     }
     String getFileName(){
         return this.fileName;
@@ -249,7 +250,6 @@ public class GlobalSettings {
     }
 
     public void setSchedule(String schedule) {
-        System.out.println(schedule);
         this.schedule = Integer.parseInt(schedule);
     }
 

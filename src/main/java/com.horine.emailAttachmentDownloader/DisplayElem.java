@@ -52,9 +52,9 @@ public class DisplayElem extends JPanel{
         setupFrame();
     }
     private void setupFrame(){
-        setMaximumSize(new Dimension(400,100));
-        setMinimumSize(new Dimension(380,100));
-        setPreferredSize(new Dimension(387, 30 + (int)(Math.ceil((double)text.length()/40) * 16) + 10));
+        setMaximumSize(new Dimension(370,100));
+        setMinimumSize(new Dimension(370,100));
+        setPreferredSize(new Dimension(370, 30 + (int)(Math.ceil((double)text.length()/40) * 16) + 10));
         setLayout(new BorderLayout());
         setBorder(BorderFactory.createBevelBorder(0));
         setBackground(Color.ORANGE);
@@ -87,13 +87,7 @@ public class DisplayElem extends JPanel{
     }
 
     private void addCloseButton(){
-        BufferedImage buttonIcon = null;
-        try {
-            buttonIcon = ImageIO.read(new File("close.png"));
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-        JButton closeButton = new JButton(new ImageIcon(buttonIcon));
+        JButton closeButton = new JButton(new ImageIcon(Thread.currentThread().getContextClassLoader().getResource("images/close.png")));
         closeButton.addMouseListener(new MouseListener() {
             @Override public void mouseClicked(MouseEvent e) {}
             @Override public void mousePressed(MouseEvent e) {}

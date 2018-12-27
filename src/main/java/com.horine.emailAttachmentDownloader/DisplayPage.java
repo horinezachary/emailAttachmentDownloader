@@ -53,7 +53,7 @@ class DisplayPage {
         for (int i = 0; i < elements.size(); i++){
             if (!elements.get(i).getOnScreen()){
                 elements.get(i).setOnScreen(true);
-                elementPanel.add(elements.get(i));
+                elementPanel.add(elements.get(i),0);
             }
             else if (elements.get(i).getOnScreen()){
                 if (elements.get(i).toRemove){
@@ -61,6 +61,10 @@ class DisplayPage {
                     elements.remove(i);
                 }
             }
+        }
+        while(elements.size() > 25){
+            elementPanel.remove(elements.get(0));
+            elements.remove(0);
         }
         msgSaver.saveElements(elements);
         frame.pack();
@@ -81,6 +85,7 @@ class DisplayPage {
         fileChooser.showOpenDialog(frame);
         File selectedfile = fileChooser.getSelectedFile();
         filepath = selectedfile.getAbsolutePath();
+        System.out.println(filepath);
         return filepath;
     }
 
@@ -165,6 +170,7 @@ class DisplayPage {
             @Override public void mouseEntered(MouseEvent e) {}
             @Override public void mouseExited(MouseEvent e) {}
             @Override public void mouseReleased(MouseEvent e) {
+                System.out.println("RUN: " + settings.getFileName());
                 runQueue.add(settings);
             }
         });
@@ -184,8 +190,6 @@ class DisplayPage {
             box.setSelected(s.getOnstartup());
             box.addActionListener(e -> {
                 s.setOnStartup(box.isSelected());
-                System.out.println(box.isSelected());
-                System.out.println(s.getOnstartup());
             });
             panel.add(box);
         }
@@ -208,7 +212,7 @@ class DisplayPage {
     private void scheduleFrame() {
         JFrame scheduleChooser = new JFrame("Scheduler");
         scheduleChooser.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
-        scheduleChooser.setPreferredSize(new Dimension(500,50 + settingsFiles.size()*50));
+        scheduleChooser.setPreferredSize(new Dimension(500,50 + settingsFiles.size()*60));
         scheduleChooser.setLocation(300,200);
         scheduleChooser.setLayout(new BorderLayout());
         JPanel panel = new JPanel();
@@ -225,8 +229,6 @@ class DisplayPage {
             box.setSelected(s.getScheduled());
             box.addActionListener(e -> {
                 s.setScheduled(box.isSelected());
-                System.out.println(box.isSelected());
-                System.out.println(s.getOnstartup());
             });
             row.add(box);
 
@@ -306,7 +308,7 @@ class DisplayPage {
                     else {
                         substring = field.getText();
                     }
-                    settings.setCfgFilepath("cfg/" + substring + ".cfg");
+                    settings.setCfgFilepath("cfg\\" + substring + ".cfg");
                     filenameFrame.dispose();
                     settings.setSaveFolder(chooseFolder());
                     PreferencesFrame prefFrame = new PreferencesFrame();
@@ -338,7 +340,7 @@ class DisplayPage {
                 File file = new File(filepath);
                 GlobalSettings settings = new GlobalSettings(filepath);
                 settings.getData();
-                settings.setCfgFilepath("cfg/" + file.getName());
+                settings.setCfgFilepath("cfg\\" + file.getName());
                 settings.saveData();
                 createCfgFileMenu(settings);
                 createCfgRunMenu(settings);
