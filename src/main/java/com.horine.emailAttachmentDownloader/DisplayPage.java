@@ -6,6 +6,7 @@ import java.awt.*;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
 import java.io.File;
+import java.io.PrintStream;
 import java.util.ArrayList;
 
 class DisplayPage {
@@ -150,16 +151,49 @@ class DisplayPage {
         JMenuItem gettingStarted = new JMenuItem("Getting Started");
         JMenuItem faq = new JMenuItem("FAQ");
         JMenuItem about = new JMenuItem("About this Software");
+        JMenuItem console = new JMenuItem("Console");
+
+        console.addMouseListener(new MouseListener() {
+            @Override public void mouseClicked(MouseEvent e) {}
+            @Override public void mousePressed(MouseEvent e) {}
+            @Override public void mouseEntered(MouseEvent e) { }
+            @Override public void mouseExited(MouseEvent e) { }
+            @Override public void mouseReleased(MouseEvent e) {
+                showConsoleFrame();
+            }
+        });
 
         helpMenu.add(help);
         helpMenu.add(gettingStarted);
         helpMenu.add(faq);
         helpMenu.addSeparator();
         helpMenu.add(about);
+        helpMenu.add(console);
 
         menubar.add(helpMenu);
 
         return menubar;
+    }
+
+    private  void  showConsoleFrame() {
+        JPanel consolePanel = new JPanel();
+        JTextArea textArea = new JTextArea(15, 30);
+        ConsoleView consoleView = new ConsoleView(
+                textArea, "Test");
+        consolePanel.setLayout(new BorderLayout());
+        consolePanel.add(new JScrollPane(textArea, JScrollPane.VERTICAL_SCROLLBAR_ALWAYS,
+                JScrollPane.HORIZONTAL_SCROLLBAR_NEVER));
+        System.setOut(new PrintStream(consoleView));
+
+        JFrame consoleFrame = new JFrame("Console");
+        consoleFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+        consoleFrame.setPreferredSize(new Dimension(500,50 + settingsFiles.size()*60));
+        consoleFrame.setLocation(300,200);
+        consoleFrame.setLayout(new BorderLayout());
+
+        consoleFrame.add(consolePanel);
+        consoleFrame.pack();
+        consoleFrame.setVisible(true);
     }
 
     private void createCfgRunMenu(GlobalSettings settings) {

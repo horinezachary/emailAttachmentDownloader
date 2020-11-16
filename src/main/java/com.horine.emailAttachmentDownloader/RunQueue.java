@@ -40,7 +40,7 @@ public class RunQueue implements Runnable {
     public void run() {
         running = true;
         while (running) {
-            //System.out.println(queue.peek().getFileName());
+            System.out.println(queue.peek().getFileName());
             if (queue.peek() != null) {
 	            System.out.println(queue.peek().getFileName());
                 GlobalSettings settings = queue.poll();

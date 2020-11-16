@@ -53,39 +53,43 @@ class ImageSaver {
         System.out.println("CHECK DUPLICATE: " + filename);
         String newFilename = filename;
         File[] files = new File(folderPath).listFiles();
-        for (File file : files) {
-            String[] filePath = file.getAbsolutePath().split("/");
-            //System.out.println("ALT FILE: " + filePath[filePath.length-1]);
-            if (filename.equals(filePath[filePath.length - 1])) {
-                System.out.println("DUPLICATE: " + filename);
-                //files have same filename, check to see if data is the same
+        if (files != null) { //there are files in the folder
+            for (File file : files) {
+                String[] filePath = file.getAbsolutePath().split("/");
+                //System.out.println("ALT FILE: " + filePath[filePath.length-1]);
+                if (filename.equals(filePath[filePath.length - 1])) {
+                    System.out.println("DUPLICATE: " + filename);
+                    //files have same filename, check to see if data is the same
 
-                if (checkDataSimilarity(newFileData, new File(file.getAbsolutePath()))) {
-                    System.out.println(filename + ": FILES ARE THE SAME");
-                    return null;    //if the files are the same, return null
-                }
+                    if (checkDataSimilarity(newFileData, new File(file.getAbsolutePath()))) {
+                        System.out.println(filename + ": FILES ARE THE SAME");
+                        return null;    //if the files are the same, return null
+                    }
 
-                System.out.println(filename + ": FILES ARE DIFFERENT");
-                //add parentheses and try again
-                int lastClose = filename.lastIndexOf(")");
-                int lastOpen = filename.lastIndexOf("(");
-                if (lastClose != -1 && lastOpen != -1 && lastClose - 1 > lastOpen) {
-                    String paren = filename.substring(lastOpen + 1, lastClose);
-                    //System.out.println("PAREN: " + paren);
-                    int filenumber = Integer.parseInt(paren) + 1;
-                    newFilename = filename.substring(0, lastOpen + 1)
-                            + filenumber
-                            + filename.substring(lastClose);
-                } else {   //does not have set of parentheses
-                    System.out.println(filename);
-                    newFilename = filename.substring(0, filename.lastIndexOf("."))
-                            + "(1)"
-                            + filename.substring(filename.lastIndexOf("."));
+                    System.out.println(filename + ": FILES ARE DIFFERENT");
+                    //add parentheses and try again
+                    int lastClose = filename.lastIndexOf(")");
+                    int lastOpen = filename.lastIndexOf("(");
+                    if (lastClose != -1 && lastOpen != -1 && lastClose - 1 > lastOpen) {
+                        String paren = filename.substring(lastOpen + 1, lastClose);
+                        //System.out.println("PAREN: " + paren);
+                        int filenumber = Integer.parseInt(paren) + 1;
+                        newFilename = filename.substring(0, lastOpen + 1)
+                                + filenumber
+                                + filename.substring(lastClose);
+                    } else {   //does not have set of parentheses
+                        System.out.println(filename);
+                        newFilename = filename.substring(0, filename.lastIndexOf("."))
+                                + "(1)"
+                                + filename.substring(filename.lastIndexOf("."));
+                    }
+                    newFilename = checkDuplicate(newFilename, newFileData);
+                } else {
+                    System.out.println("NOT A DUPLICATE: " + filePath[filePath.length - 1]);
                 }
-                newFilename = checkDuplicate(newFilename, newFileData);
-            } else {
-                System.out.println("NOT A DUPLICATE: " + filePath[filePath.length - 1]);
             }
+        } else { //there are currently no other files in the list, so pass incoming name
+            newFilename = filename;
         }
         return newFilename;
     }
