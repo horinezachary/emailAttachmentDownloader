@@ -168,7 +168,8 @@ public class ProfileStoreTests
 
         string text = File.ReadAllText(path);
         Assert.Contains("\"Pop3\"", text);
-        Assert.DoesNotContain("password", text, StringComparison.OrdinalIgnoreCase);
+        // The sign-in method is stored as the word "Password", so look for a password *field*, not the word.
+        Assert.DoesNotContain("\"password\":", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

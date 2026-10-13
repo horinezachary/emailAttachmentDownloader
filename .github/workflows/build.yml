@@ -42,8 +42,15 @@ jobs:
         run: |
           $trx = Get-ChildItem -Path TestResults -Filter *.trx -Recurse | Select-Object -First 1
           if (-not $trx) { Write-Host "::warning title=Tests::No TRX file was produced"; exit 0 }
-          $c = ([xml](Get-Content $trx.FullName)).TestRun.ResultSummary.Counters
+          $xml = [xml](Get-Content $trx.FullName)
+          $c = $xml.TestRun.ResultSummary.Counters
           Write-Host "::notice title=Test results::total=$($c.total) executed=$($c.executed) passed=$($c.passed) failed=$($c.failed)"
+          # Name each failed test so a failure can be read without downloading logs.
+          foreach ($r in $xml.TestRun.Results.UnitTestResult | Where-Object { $_.outcome -eq "Failed" }) {
+            $msg = ($r.Output.ErrorInfo.Message -replace "[\r\n]+", " ")
+            if ($msg.Length -gt 400) { $msg = $msg.Substring(0, 400) }
+            Write-Host "::error title=Failed test::$($r.testName) :: $msg"
+          }
 
       - name: Publish tray app
         run: dotnet publish src/EmailAttachmentDownloader.Tray -c Release -r win-x64 --self-contained false -p:Version=${{ steps.ver.outputs.version }} -o publish/tray

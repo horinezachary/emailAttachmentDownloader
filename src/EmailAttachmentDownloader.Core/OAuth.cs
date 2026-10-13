@@ -420,27 +420,38 @@ public sealed class GoogleOAuth
         }
     }
 
+    /// <summary>
+    /// Reads the whole request head (up to the blank line) and returns its first line. Everything the browser sent is
+    /// consumed before replying: closing a socket that still has unread data makes Windows reset the connection, and the
+    /// browser would then show an error instead of our page.
+    /// </summary>
     private static async Task<string?> ReadRequestLineAsync(NetworkStream stream, CancellationToken ct)
     {
-        var buffer = new byte[8192];
+        var buffer = new byte[16384];
         int length = 0;
         while (length < buffer.Length)
         {
             int read = await stream.ReadAsync(buffer.AsMemory(length), ct).ConfigureAwait(false);
             if (read == 0)
             {
-                return null;
+                break;
             }
 
             length += read;
-            int end = Array.IndexOf(buffer, (byte)'\n', 0, length);
-            if (end >= 0)
+            if (Encoding.ASCII.GetString(buffer, 0, length).Contains("\r\n\r\n", StringComparison.Ordinal))
             {
-                return Encoding.ASCII.GetString(buffer, 0, end).TrimEnd('\r');
+                break;
             }
         }
 
-        return null;
+        if (length == 0)
+        {
+            return null;
+        }
+
+        string head = Encoding.ASCII.GetString(buffer, 0, length);
+        int lineEnd = head.IndexOf('\n');
+        return (lineEnd < 0 ? head : head[..lineEnd]).TrimEnd('\r');
     }
 
     private static async Task WriteResponseAsync(NetworkStream stream, string status, string html, CancellationToken ct)
