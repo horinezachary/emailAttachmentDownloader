@@ -8,11 +8,11 @@ This branch is a ground-up rewrite of the original Java/Swing app in **C# on .NE
 behaviour you relied on is kept; the parts that were unstable or heavy are replaced. The Java
 version is still on `master`.
 
-> **Status: first pass, not yet built or run.** It was written without access to a .NET SDK, so
-> nothing here has been compiled or executed yet. The included GitHub Actions workflow
-> (`.github/workflows/build.yml`) builds and tests it on a Windows runner; expect to fix a few
-> compile errors and failing tests on the first run. The mail code has never talked to a real
-> server. See [Known gaps](#known-gaps).
+> **Status: first pass.** It builds, and all 64 unit tests pass on a Windows runner
+> (`.github/workflows/build.yml`, which also publishes ready-to-run `win-x64` builds as an
+> artifact). It was written without a local .NET SDK, so CI was its first real compile. What has
+> **not** been exercised: the IMAP/POP3 code against a real mail server, and the tray UI on screen.
+> See [Known gaps](#known-gaps).
 
 ## What it does
 
@@ -118,11 +118,11 @@ machine can decrypt it) with much less interop code. Credential Manager can be s
 
 ## Known gaps
 
-- **Not compiled or run yet** (see the status note at the top). The tray UI in particular has never
-  been looked at on screen, so expect layout rough edges.
+- The **tray UI has never been looked at on screen**; it compiles, but expect layout rough edges.
 - The mail code is **untested against a real server**. There is no mail-server test double, so the
   IMAP/POP3 paths are covered only by reading the code. Everything around them (matching, saving,
   de-dup, scheduling rules, storage, import) has unit tests.
+- `MailSyncService`, `SyncScheduler`'s run loop and the WinForms code have no automated tests.
 - Packages use floating versions (`MailKit 4.*` and so on) so the first restore cannot fail on a
   version that does not exist. Pin exact versions after the first successful restore.
 - Whole messages are downloaded for matches. Fetching only the attachment parts over IMAP would
