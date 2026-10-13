@@ -18,6 +18,8 @@ version is still on `master`.
 
 - Connects over **IMAP or POP3** (TLS) with MailKit.
 - Matches on the **subject**, case-insensitively, using your keywords (any or all).
+- Optionally also requires the e-mail to be **sent to** one of your addresses (To or Cc). Useful when
+  one mailbox receives mail for several addresses, such as `you+frames@gmail.com`.
 - Saves attachments whose type matches (default `image/*`; add `application/pdf` etc. if you like).
 - **Never saves the same picture twice**, even if it is renamed or re-sent, by comparing content hashes.
 - Runs **on startup, on demand, and on a schedule**, one account at a time.
@@ -68,6 +70,29 @@ storage. You can then delete the `.cfg` files and the old `.messages` file.
 
 Gmail does not accept your normal password over IMAP/POP3. Turn on 2-Step Verification and create an
 **app password**, then use that in Settings. Test with the "Test connection" button.
+
+### Recipient filter
+
+In Settings, tick **Only mail sent to** and list full addresses separated by commas. An e-mail must
+match the subject keywords **and** be addressed (To or Cc) to one of the listed addresses.
+
+- Matching is on the whole address, ignoring case. `you+frames@gmail.com` and `you@gmail.com` are
+  different addresses; list each one you want.
+- For `gmail.com` / `googlemail.com`, dots in the name part are ignored (`y.o.u@gmail.com` is `you@gmail.com`).
+- Domain-only entries (`@example.com`) are not supported.
+- Every address is checked when you press Save; the message names the bad entry.
+- Unticking the box turns the filter off but keeps the list. Turning it on with an empty list is rejected.
+- Bcc'd mail cannot be matched (the address is not in the message). Mail sent through an alias or a
+  mailing list only matches if the address you listed appears in To or Cc.
+- Changing the list makes the next run re-examine the mailbox, because mail skipped earlier may now
+  qualify. Pictures already saved are never duplicated.
+
+### Pausing an account
+
+Untick **Enabled** to pause an account without deleting it. It shows as `Name (disabled)` in grey in
+the account list. A paused account is skipped by the schedule, by "check on start", by the tray's
+"Check mail now" and by `ead run`; **Save and check now** in Settings and `ead run <account>` still
+check it, so you can test without re-enabling.
 
 ### Running without a resident process
 

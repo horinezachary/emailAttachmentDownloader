@@ -55,6 +55,17 @@ internal static class FilterSignature
             .Select(k => "k:" + k.Trim().ToLowerInvariant())
             .OrderBy(k => k, StringComparer.Ordinal));
 
+        // Only present while the filter is in use, so accounts that never use it keep their old signature
+        // (and do not rescan after upgrading).
+        if (profile.UsesRecipientFilter)
+        {
+            lines.AddRange(profile.ToAddresses
+                .Where(a => !string.IsNullOrWhiteSpace(a))
+                .Select(a => "to:" + Recipients.Normalize(a))
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(a => a, StringComparer.Ordinal));
+        }
+
         lines.AddRange(profile.AttachmentTypes
             .Where(t => !string.IsNullOrWhiteSpace(t))
             .Select(t => "t:" + t.Trim().ToLowerInvariant())

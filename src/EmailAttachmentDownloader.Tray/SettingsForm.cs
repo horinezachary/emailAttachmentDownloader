@@ -20,7 +20,8 @@ internal sealed class SettingsForm : Form
     private int _current = -1;
     private bool _loading;
 
-    private readonly ListBox _list = new() { Dock = DockStyle.Fill, IntegralHeight = false };
+    // Owner-drawn so a paused account can be shown in grey.
+    private readonly ListBox _list = new() { Dock = DockStyle.Fill, IntegralHeight = false, DrawMode = DrawMode.OwnerDrawFixed };
     private readonly Button _add = new() { Text = "Add", AutoSize = true };
     private readonly Button _remove = new() { Text = "Remove", AutoSize = true };
 
@@ -42,6 +43,8 @@ internal sealed class SettingsForm : Form
     private readonly Button _browse = new() { Text = "Browse...", AutoSize = true };
     private readonly TextBox _keywords = new();
     private readonly ComboBox _keywordMode = new() { DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly CheckBox _recipientFilter = new() { Text = "Only mail sent to", AutoSize = true, Anchor = AnchorStyles.Left };
+    private readonly TextBox _toAddresses = new() { PlaceholderText = "you@gmail.com, you+frames@gmail.com" };
     private readonly TextBox _types = new();
     private readonly NumericUpDown _minSize = new() { Minimum = 0, Maximum = 100000, Value = 0 };
     private readonly CheckBox _runOnStartup = new() { Text = "Check mail when the app starts", AutoSize = true };
@@ -94,7 +97,7 @@ internal sealed class SettingsForm : Form
 
         foreach (AccountProfile profile in _working)
         {
-            _list.Items.Add(profile.Name);
+            _list.Items.Add(ListText(profile));
         }
 
         if (_working.Count == 0)
@@ -148,11 +151,29 @@ internal sealed class SettingsForm : Form
 
         AddRow("Subject keywords", _keywords);
         AddRow("Keyword match", _keywordMode);
+
+        // Checkbox in front of the address list; unticking greys the list out but keeps what was typed.
+        var recipientRow = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, AutoSize = true };
+        recipientRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        recipientRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        _toAddresses.Dock = DockStyle.Fill;
+        recipientRow.Controls.Add(_recipientFilter, 0, 0);
+        recipientRow.Controls.Add(_toAddresses, 1, 0);
+        AddRow("Recipient filter", recipientRow);
+        _tips.SetToolTip(
+            _recipientFilter,
+            "Only take mail addressed (To or Cc) to one of these full addresses, separated by commas.\n"
+            + "Plus-addresses such as you+frames@gmail.com must match exactly. For Gmail, dots in the name are ignored.\n"
+            + "Untick to ignore the list without deleting it.");
+
         AddRow("Attachment types", _types);
         AddRow("Skip smaller than (KB)", _minSize);
         AddRow("", _runOnStartup);
         _tips.SetToolTip(_runOnStartup, "Takes effect the next time the app starts. Use \"Save and check now\" to check immediately.");
-        _tips.SetToolTip(_enabled, "Turn off to pause this account without deleting it.");
+        _tips.SetToolTip(
+            _enabled,
+            "Turn off to pause this account without deleting it. A paused account is skipped by the schedule and by \"Check mail now\"; "
+            + "\"Save and check now\" here still checks it.");
 
         var scheduleRow = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = false };
         scheduleRow.Controls.Add(_scheduled);
@@ -166,7 +187,8 @@ internal sealed class SettingsForm : Form
             ForeColor = SystemColors.GrayText,
             MaximumSize = new Size(520, 0),
             Text = "Keywords are separated by commas and matched anywhere in the subject, ignoring case. "
-                   + "Leave blank to take every e-mail. Attachment types look like image/*, application/pdf.",
+                   + "Leave blank to take every e-mail. If the recipient filter is on, mail must match the keywords "
+                   + "and be sent to one of the listed addresses. Attachment types look like image/*, application/pdf.",
         };
         AddRow("", hint);
 
@@ -227,6 +249,76 @@ internal sealed class SettingsForm : Form
         _runNow.Click += (_, _) => SaveAndRun();
         _test.Click += async (_, _) => await TestConnectionAsync();
         _scheduled.CheckedChanged += (_, _) => _interval.Enabled = _scheduled.Checked;
+        _recipientFilter.CheckedChanged += (_, _) => _toAddresses.Enabled = _recipientFilter.Checked;
+        _list.DrawItem += DrawListItem;
+        _enabled.CheckedChanged += (_, _) => OnEnabledToggled();
+    }
+
+    // ----- account list ------------------------------------------------------------------------
+
+    private static string ListText(AccountProfile profile) => profile.Enabled ? profile.Name : profile.Name + " (disabled)";
+
+    private void DrawListItem(object? sender, DrawItemEventArgs e)
+    {
+        e.DrawBackground();
+        if (e.Index >= 0 && e.Index < _working.Count)
+        {
+            AccountProfile profile = _working[e.Index];
+            bool selected = (e.State & DrawItemState.Selected) != 0;
+
+            // Grey for a paused account, except when selected (grey on the highlight colour is unreadable).
+            Color color = selected || profile.Enabled ? e.ForeColor : SystemColors.GrayText;
+            TextRenderer.DrawText(
+                e.Graphics,
+                ListText(profile),
+                e.Font ?? Font,
+                e.Bounds,
+                color,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+        }
+
+        e.DrawFocusRectangle();
+    }
+
+    private void OnEnabledToggled()
+    {
+        if (_loading || _current < 0 || _current >= _working.Count)
+        {
+            return;
+        }
+
+        _working[_current].Enabled = _enabled.Checked;
+        RefreshListItem(_current);
+    }
+
+    private void RefreshListItem(int index)
+    {
+        if (index < 0 || index >= _working.Count || index >= _list.Items.Count)
+        {
+            return;
+        }
+
+        string text = ListText(_working[index]);
+        if (Equals(_list.Items[index], text))
+        {
+            return;
+        }
+
+        // Replacing an item can drop the selection, so put back whatever was selected before.
+        int selected = _list.SelectedIndex;
+        _loading = true;
+        try
+        {
+            _list.Items[index] = text;
+            if (_list.SelectedIndex != selected)
+            {
+                _list.SelectedIndex = selected;
+            }
+        }
+        finally
+        {
+            _loading = false;
+        }
     }
 
     // ----- selection and editor plumbing -------------------------------------------------------
@@ -249,7 +341,7 @@ internal sealed class SettingsForm : Form
 
         var profile = new AccountProfile { SaveFolder = AccountProfile.DefaultSaveFolder() };
         _working.Add(profile);
-        _list.Items.Add(profile.Name);
+        _list.Items.Add(ListText(profile));
 
         _current = -1;
         _list.SelectedIndex = _working.Count - 1; // fires OnSelectionChanged, which loads the editor
@@ -316,6 +408,7 @@ internal sealed class SettingsForm : Form
             if (!has)
             {
                 _name.Text = _host.Text = _user.Text = _password.Text = _folder.Text = _keywords.Text = _types.Text = "";
+                _toAddresses.Text = "";
                 return;
             }
 
@@ -331,6 +424,9 @@ internal sealed class SettingsForm : Form
             _folder.Text = p.SaveFolder;
             _keywords.Text = Keywords.Format(p.Keywords);
             _keywordMode.SelectedIndex = (int)p.KeywordMode;
+            _recipientFilter.Checked = p.RecipientFilterEnabled;
+            _toAddresses.Text = Recipients.Format(p.ToAddresses);
+            _toAddresses.Enabled = p.RecipientFilterEnabled;
             _types.Text = string.Join(", ", p.AttachmentTypes);
             _minSize.Value = Math.Clamp(p.MinSizeKb, 0, 100000);
             _runOnStartup.Checked = p.RunOnStartup;
@@ -363,6 +459,8 @@ internal sealed class SettingsForm : Form
         p.SaveFolder = _folder.Text.Trim();
         p.Keywords = Keywords.Parse(_keywords.Text);
         p.KeywordMode = (KeywordMode)Math.Max(0, _keywordMode.SelectedIndex);
+        p.RecipientFilterEnabled = _recipientFilter.Checked;
+        p.ToAddresses = Recipients.Parse(_toAddresses.Text);
         p.AttachmentTypes = AttachmentFilter.ParsePatterns(_types.Text);
         p.MinSizeKb = (int)_minSize.Value;
         p.RunOnStartup = _runOnStartup.Checked;
@@ -374,18 +472,7 @@ internal sealed class SettingsForm : Form
             _newPasswords[p.Id] = _password.Text;
         }
 
-        _loading = true;
-        try
-        {
-            if (_current < _list.Items.Count && !Equals(_list.Items[_current], p.Name))
-            {
-                _list.Items[_current] = p.Name;
-            }
-        }
-        finally
-        {
-            _loading = false;
-        }
+        RefreshListItem(_current);
     }
 
     private void OnProtocolChanged()

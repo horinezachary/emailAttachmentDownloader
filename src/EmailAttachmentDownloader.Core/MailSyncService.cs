@@ -240,6 +240,12 @@ public sealed class MailSyncService
                 continue;
             }
 
+            // The envelope already carries To and Cc, so this needs no extra download.
+            if (!Recipients.Accepts(profile, Recipients.From(summary.Envelope?.To, summary.Envelope?.Cc)))
+            {
+                continue;
+            }
+
             counts.Matched++;
             try
             {
@@ -295,18 +301,22 @@ public sealed class MailSyncService
             {
                 MimeMessage? message = null;
                 string? subject;
+                List<string> recipients;
                 if (canReadHeadersOnly)
                 {
                     HeaderList headers = await client.GetMessageHeadersAsync(index, ct).ConfigureAwait(false);
                     subject = headers[HeaderId.Subject];
+                    recipients = Recipients.FromHeaders(headers[HeaderId.To], headers[HeaderId.Cc]);
                 }
                 else
                 {
                     message = await client.GetMessageAsync(index, ct).ConfigureAwait(false);
                     subject = message.Subject;
+                    recipients = Recipients.From(message.To, message.Cc);
                 }
 
-                if (Keywords.IsMatch(subject, profile.Keywords, profile.KeywordMode))
+                if (Keywords.IsMatch(subject, profile.Keywords, profile.KeywordMode)
+                    && Recipients.Accepts(profile, recipients))
                 {
                     counts.Matched++;
                     message ??= await client.GetMessageAsync(index, ct).ConfigureAwait(false);

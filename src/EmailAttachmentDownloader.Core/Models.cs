@@ -51,6 +51,19 @@ public sealed class AccountProfile
     public List<string> Keywords { get; set; } = new();
     public KeywordMode KeywordMode { get; set; } = KeywordMode.Any;
 
+    /// <summary>
+    /// Whether <see cref="ToAddresses"/> is applied. The list is kept when this is off, so the
+    /// user can switch the filter on and off without retyping it.
+    /// </summary>
+    public bool RecipientFilterEnabled { get; set; }
+
+    /// <summary>Only mail sent (To or Cc) to one of these exact addresses qualifies, when the filter is on.</summary>
+    public List<string> ToAddresses { get; set; } = new();
+
+    /// <summary>True when mail is actually being filtered by recipient.</summary>
+    [JsonIgnore]
+    public bool UsesRecipientFilter => RecipientFilterEnabled && ToAddresses.Any(a => !string.IsNullOrWhiteSpace(a));
+
     /// <summary>MIME patterns such as <c>image/*</c> or <c>application/pdf</c>.</summary>
     public List<string> AttachmentTypes { get; set; } = new() { "image/*" };
 
@@ -65,6 +78,7 @@ public sealed class AccountProfile
     {
         var copy = (AccountProfile)MemberwiseClone();
         copy.Keywords = new List<string>(Keywords);
+        copy.ToAddresses = new List<string>(ToAddresses);
         copy.AttachmentTypes = new List<string>(AttachmentTypes);
         return copy;
     }
@@ -107,6 +121,13 @@ public sealed class AccountProfile
         if (AttachmentTypes.Count == 0 || AttachmentTypes.All(string.IsNullOrWhiteSpace))
         {
             problems.Add("At least one attachment type is required (for example image/*).");
+        }
+
+        // Checked even while the filter is off, so a saved list is always clean.
+        problems.AddRange(Recipients.Problems(ToAddresses));
+        if (RecipientFilterEnabled && !ToAddresses.Any(a => !string.IsNullOrWhiteSpace(a)))
+        {
+            problems.Add("The recipient filter is on but the address list is empty. Add an address or turn the filter off.");
         }
 
         return problems;

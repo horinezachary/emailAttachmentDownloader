@@ -1,4 +1,5 @@
 using System.Text;
+using MimeKit;
 
 namespace EmailAttachmentDownloader.Core;
 
@@ -41,6 +42,148 @@ public static class Keywords
         string text = subject;
         bool Has(string keyword) => text.Contains(keyword, StringComparison.OrdinalIgnoreCase);
         return mode == KeywordMode.All ? active.All(Has) : active.Any(Has);
+    }
+}
+
+/// <summary>Recipient (To/Cc) parsing, validation and matching.</summary>
+/// <remarks>
+/// Matching is on the whole address, ignoring case. Plus-addresses are exact:
+/// <c>you+frames@gmail.com</c> does not match <c>you@gmail.com</c> or the other way round.
+/// Gmail ignores dots in the name part and treats googlemail.com as gmail.com, so for those
+/// two domains <c>y.o.u@gmail.com</c> matches <c>you@gmail.com</c>. Domain-only entries are not supported.
+/// </remarks>
+public static class Recipients
+{
+    private static readonly char[] Separators = { ',', ';', '\r', '\n' };
+
+    /// <summary>Splits user input on commas, semicolons and line breaks, dropping repeats.</summary>
+    public static List<string> Parse(string? text)
+    {
+        var result = new List<string>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (string entry in (text ?? "").Split(Separators, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (seen.Add(Normalize(entry)))
+            {
+                result.Add(entry);
+            }
+        }
+
+        return result;
+    }
+
+    public static string Format(IEnumerable<string> addresses) => string.Join(", ", addresses);
+
+    /// <summary>Null when the entry is a plain, valid e-mail address; otherwise a message saying what is wrong.</summary>
+    public static string? Problem(string? entry)
+    {
+        string text = (entry ?? "").Trim();
+        if (text.Length == 0)
+        {
+            return "An address is empty.";
+        }
+
+        if (text.StartsWith('@'))
+        {
+            return $"\"{text}\": whole domains are not supported; enter full addresses such as name@example.com.";
+        }
+
+        // Reject "Name <a@b.com>" and similar: only a bare address is allowed.
+        if (!MailboxAddress.TryParse(text, out MailboxAddress? mailbox)
+            || !mailbox.Address.Equals(text, StringComparison.OrdinalIgnoreCase))
+        {
+            return $"\"{text}\" is not a valid e-mail address.";
+        }
+
+        int at = text.LastIndexOf('@');
+        if (at <= 0 || at == text.Length - 1 || !text[(at + 1)..].Contains('.'))
+        {
+            return $"\"{text}\" is not a valid e-mail address (expected name@domain.com).";
+        }
+
+        return null;
+    }
+
+    /// <summary>One message per invalid entry; empty when the whole list is fine.</summary>
+    public static IReadOnlyList<string> Problems(IEnumerable<string> entries)
+    {
+        return entries
+            .Where(e => !string.IsNullOrWhiteSpace(e))
+            .Select(Problem)
+            .Where(p => p is not null)
+            .Select(p => p!)
+            .ToList();
+    }
+
+    /// <summary>The canonical form used for comparing addresses.</summary>
+    public static string Normalize(string address)
+    {
+        string text = address.Trim().ToLowerInvariant();
+        int at = text.LastIndexOf('@');
+        if (at <= 0)
+        {
+            return text;
+        }
+
+        string local = text[..at];
+        string domain = text[(at + 1)..];
+
+        if (domain == "googlemail.com")
+        {
+            domain = "gmail.com";
+        }
+
+        if (domain == "gmail.com")
+        {
+            // Dots only count before the "+tag"; the tag itself stays exact.
+            int plus = local.IndexOf('+');
+            string name = plus >= 0 ? local[..plus] : local;
+            string tag = plus >= 0 ? local[plus..] : "";
+            local = name.Replace(".", "") + tag;
+        }
+
+        return local + "@" + domain;
+    }
+
+    /// <summary>True when any of the message's addresses equals any wanted address.</summary>
+    public static bool IsMatch(IEnumerable<string> messageAddresses, IEnumerable<string> wanted)
+    {
+        var wantedSet = new HashSet<string>(
+            wanted.Where(a => !string.IsNullOrWhiteSpace(a)).Select(Normalize),
+            StringComparer.Ordinal);
+        if (wantedSet.Count == 0)
+        {
+            return false;
+        }
+
+        return messageAddresses
+            .Where(a => !string.IsNullOrWhiteSpace(a))
+            .Any(a => wantedSet.Contains(Normalize(a)));
+    }
+
+    /// <summary>True when the profile has no active recipient filter, or the message passes it.</summary>
+    public static bool Accepts(AccountProfile profile, IEnumerable<string> messageAddresses)
+    {
+        return !profile.UsesRecipientFilter || IsMatch(messageAddresses, profile.ToAddresses);
+    }
+
+    /// <summary>The To and Cc addresses of a message. Groups are flattened.</summary>
+    public static List<string> From(InternetAddressList? to, InternetAddressList? cc)
+    {
+        var result = new List<string>();
+        if (to is not null) result.AddRange(to.Mailboxes.Select(m => m.Address));
+        if (cc is not null) result.AddRange(cc.Mailboxes.Select(m => m.Address));
+        return result;
+    }
+
+    /// <summary>Same as <see cref="From"/>, for raw header text (POP3 TOP). Unparseable headers give no addresses.</summary>
+    public static List<string> FromHeaders(string? toHeader, string? ccHeader)
+    {
+        InternetAddressList? to = null;
+        InternetAddressList? cc = null;
+        if (!string.IsNullOrWhiteSpace(toHeader)) InternetAddressList.TryParse(toHeader, out to);
+        if (!string.IsNullOrWhiteSpace(ccHeader)) InternetAddressList.TryParse(ccHeader, out cc);
+        return From(to, cc);
     }
 }
 
