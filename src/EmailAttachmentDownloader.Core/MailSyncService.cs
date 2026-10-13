@@ -95,10 +95,12 @@ public sealed class MailSyncService
         var timer = Stopwatch.StartNew();
         var counts = new RunCounts();
 
+        bool needsSignIn = false;
+
         RunResult Finish(string? failure) => new(
             profile.Id, profile.Name, started, timer.Elapsed,
             counts.Checked, counts.Matched, counts.NewFiles, counts.Duplicates, counts.Failures,
-            failure, profile.SaveFolder);
+            failure, profile.SaveFolder, needsSignIn);
 
         IReadOnlyList<string> problems = profile.Validate(_builtInClient);
         if (problems.Count > 0)
@@ -151,6 +153,7 @@ public sealed class MailSyncService
         catch (Exception ex)
         {
             error = Describe(ex, profile);
+            needsSignIn = NeedsGoogleSignIn(ex, profile);
             _log.LogError(ex, "Sync failed for {Account}", profile.Name);
         }
         finally
@@ -385,7 +388,7 @@ public sealed class MailSyncService
         string? refreshToken = secretsOverride?.RefreshToken ?? _credentials.Get(OAuthKeys.RefreshToken(profile.Id));
         if (string.IsNullOrEmpty(refreshToken))
         {
-            throw new InvalidOperationException(
+            throw new SignInRequiredException(
                 "This account uses Google sign-in but is not signed in yet. Open Settings and choose \"Sign in with Google\".");
         }
 
@@ -430,6 +433,13 @@ public sealed class MailSyncService
         _ => SecureSocketOptions.Auto,
     };
 
+    /// <summary>True when only signing in with Google again can fix the failure (as opposed to a network blip or a bad setting).</summary>
+    private static bool NeedsGoogleSignIn(Exception ex, AccountProfile profile) =>
+        profile.Authentication == AuthMethod.GoogleOAuth
+        && (ex is SignInRequiredException
+            or OAuthException { NeedsSignIn: true }
+            or MailKit.Security.AuthenticationException);
+
     private static string Describe(Exception ex, AccountProfile profile) => ex switch
     {
         MailKit.Security.AuthenticationException when profile.Authentication == AuthMethod.GoogleOAuth =>
@@ -440,4 +450,12 @@ public sealed class MailSyncService
         SslHandshakeException => "Could not establish a secure connection: " + ex.Message,
         _ => ex.Message,
     };
+}
+
+/// <summary>The account has no saved Google sign-in at all.</summary>
+internal sealed class SignInRequiredException : InvalidOperationException
+{
+    public SignInRequiredException(string message) : base(message)
+    {
+    }
 }

@@ -431,6 +431,7 @@ public class OAuthSyncServiceTests
         Assert.Contains("not signed in", result.Error, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("password", result.Error, StringComparison.OrdinalIgnoreCase);
         Assert.Empty(handler.Bodies);
+        Assert.True(result.NeedsSignIn);
     }
 
     [Fact]
@@ -447,6 +448,7 @@ public class OAuthSyncServiceTests
 
         Assert.False(result.Succeeded);
         Assert.Contains("sign in with Google again", result.Error, StringComparison.OrdinalIgnoreCase);
+        Assert.True(result.NeedsSignIn);
 
         // It really did try the stored secrets.
         Dictionary<string, string> form = OAuthTestHelpers.Form(Assert.Single(handler.Bodies));
@@ -467,6 +469,49 @@ public class OAuthSyncServiceTests
         RunResult result = await service.RunAsync(p);
 
         Assert.Contains("No password is stored", result.Error, StringComparison.Ordinal);
+        Assert.False(result.NeedsSignIn);
+    }
+
+    [Fact]
+    public async Task Being_offline_is_not_reported_as_needing_a_new_sign_in()
+    {
+        using var dir = new TempDir();
+        var credentials = new MemoryCredentialStore();
+        credentials.Set(OAuthKeys.RefreshToken("acct"), "refresh");
+        var handler = new StubHandler(_ => throw new HttpRequestException("no network"));
+        MailSyncService service = Service(dir, credentials, new GoogleOAuth(new HttpClient(handler)), BuiltIn);
+
+        RunResult result = await service.RunAsync(Google(dir));
+
+        Assert.False(result.Succeeded);
+        Assert.False(result.NeedsSignIn);
+    }
+
+    [Fact]
+    public async Task A_run_that_fails_validation_does_not_ask_for_google_sign_in()
+    {
+        using var dir = new TempDir();
+        MailSyncService service = Service(dir, new MemoryCredentialStore(), new GoogleOAuth(new HttpClient(new StubHandler(_ => throw new InvalidOperationException()))));
+        AccountProfile p = Google(dir);
+        p.Authentication = AuthMethod.Password;
+        p.UserName = "";
+
+        RunResult result = await service.RunAsync(p);
+
+        Assert.False(result.Succeeded);
+        Assert.False(result.NeedsSignIn);
+    }
+
+    [Fact]
+    public void Older_history_lines_without_the_flag_still_load()
+    {
+        const string json = "{\"accountId\":\"a\",\"accountName\":\"n\",\"startedAt\":\"2026-01-01T00:00:00+00:00\",\"duration\":\"00:00:01\","
+            + "\"messagesChecked\":0,\"messagesMatched\":0,\"newFiles\":0,\"duplicates\":0,\"failures\":0,\"error\":\"x\",\"saveFolder\":\"f\"}";
+
+        RunResult? result = System.Text.Json.JsonSerializer.Deserialize<RunResult>(json, Json.Compact);
+
+        Assert.NotNull(result);
+        Assert.False(result!.NeedsSignIn);
     }
 
     [Fact]
@@ -523,6 +568,7 @@ public class OAuthSyncServiceTests
 
         Assert.Contains("own Google OAuth client", result.Error, StringComparison.Ordinal);
         Assert.Empty(handler.Bodies);
+        Assert.False(result.NeedsSignIn);
     }
 }
 

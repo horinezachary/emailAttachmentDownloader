@@ -653,17 +653,17 @@ internal sealed class SettingsForm : Form
     }
 
     /// <summary>Opens Google's page in the default browser; the button turns into "Cancel sign-in" while waiting.</summary>
-    private async Task SignInWithGoogleAsync()
+    private async Task<bool> SignInWithGoogleAsync()
     {
         if (_signInCts is not null)
         {
             _signInCts.Cancel();
-            return;
+            return false;
         }
 
         if (_current < 0)
         {
-            return;
+            return false;
         }
 
         CommitEditor();
@@ -680,10 +680,11 @@ internal sealed class SettingsForm : Form
                 "Sign in with Google",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
-            return;
+            return false;
         }
 
         string accountId = profile.Id;
+        bool signedIn = false;
         _signInCts = new CancellationTokenSource();
         _signIn.Text = "Cancel sign-in";
         _status.Text = "Finish signing in in your browser. This waits up to 5 minutes.";
@@ -699,6 +700,7 @@ internal sealed class SettingsForm : Form
                 _signedInAs[accountId] = tokens.Email;
             }
 
+            signedIn = true;
             _status.Text = "Signed in with Google. Press Save to keep it.";
 
             // Compare the way Gmail does (dots and case do not matter in Gmail addresses).
@@ -729,6 +731,36 @@ internal sealed class SettingsForm : Form
             _signIn.Text = "Sign in with Google";
             UpdateSignInStatus();
         }
+
+        return signedIn;
+    }
+
+    /// <summary>
+    /// Used by the "sign-in needed" pop-up: selects the account, signs in with Google and saves straight away,
+    /// so the next check can use the new sign-in. Returns true when the account is signed in and saved.
+    /// </summary>
+    public async Task<bool> SignInAccountAsync(string accountId)
+    {
+        int index = _working.FindIndex(p => p.Id == accountId);
+        Activate();
+        if (index < 0 || _signInCts is not null)
+        {
+            return false;
+        }
+
+        if (_list.SelectedIndex != index)
+        {
+            _list.SelectedIndex = index;
+        }
+
+        if (!await SignInWithGoogleAsync() || IsDisposed || !SaveAll())
+        {
+            return false;
+        }
+
+        _scheduler.RequestRun(accountId);
+        _status.Text = "Signed in and saved. Checking mail now...";
+        return true;
     }
 
     private static void OpenInBrowser(string url)

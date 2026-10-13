@@ -26,6 +26,13 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly Control _marshal = new();
 
     private readonly ToolStripMenuItem _startWithWindows = new("Start with Windows") { CheckOnClick = false };
+    private readonly ToolStripMenuItem _signInNeeded = new("Sign-in needed...") { Visible = false };
+
+    // Accounts whose Google sign-in must be redone, and when each was last put in front of the user.
+    private static readonly TimeSpan ReminderInterval = TimeSpan.FromHours(4);
+    private readonly Dictionary<string, string> _needSignIn = new();
+    private readonly Dictionary<string, DateTime> _lastPrompted = new();
+    private SignInNeededForm? _signInForm;
 
     private SettingsForm? _settingsForm;
     private HistoryForm? _historyForm;
@@ -96,6 +103,9 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private ContextMenuStrip BuildMenu()
     {
         var menu = new ContextMenuStrip();
+        _signInNeeded.Font = new Font(_signInNeeded.Font, FontStyle.Bold);
+        _signInNeeded.Click += (_, _) => ShowSignInPrompt();
+        menu.Items.Add(_signInNeeded);
         menu.Items.Add("Check mail now", null, (_, _) => _scheduler.RequestRunAll());
         menu.Items.Add("Open picture folder", null, (_, _) => OpenPictureFolder());
         menu.Items.Add(new ToolStripSeparator());
@@ -176,7 +186,18 @@ internal sealed class TrayApplicationContext : ApplicationContext
     {
         RunOnUiThread(() =>
         {
-            if (result.NewFiles > 0 || !result.Succeeded)
+            bool prompting = false;
+            if (result.NeedsSignIn)
+            {
+                prompting = TrackSignInNeeded(result);
+            }
+            else if (result.Succeeded)
+            {
+                ClearSignInNeeded(result.AccountId);
+            }
+
+            // The pop-up already says what is wrong, so skip the balloon for the same failure.
+            if (!prompting && (result.NewFiles > 0 || !result.Succeeded))
             {
                 _icon.ShowBalloonTip(
                     5000,
@@ -192,6 +213,79 @@ internal sealed class TrayApplicationContext : ApplicationContext
         });
     }
 
+    /// <summary>Remembers that an account needs a new sign-in and shows the pop-up unless it was shown recently. True if shown.</summary>
+    private bool TrackSignInNeeded(RunResult result)
+    {
+        _needSignIn[result.AccountId] = result.AccountName;
+        UpdateSignInIndicators();
+
+        bool open = _signInForm is { IsDisposed: false };
+        bool due = !_lastPrompted.TryGetValue(result.AccountId, out DateTime last) || DateTime.UtcNow - last >= ReminderInterval;
+        if (!open && !due)
+        {
+            return false;
+        }
+
+        ShowSignInPrompt();
+        return true;
+    }
+
+    private void ClearSignInNeeded(string accountId)
+    {
+        _lastPrompted.Remove(accountId);
+        if (_needSignIn.Remove(accountId))
+        {
+            _signInForm?.Remove(accountId);
+            UpdateSignInIndicators();
+        }
+    }
+
+    private void UpdateSignInIndicators()
+    {
+        _signInNeeded.Visible = _needSignIn.Count > 0;
+        _icon.Text = _needSignIn.Count > 0
+            ? "Email Attachment Downloader - sign-in needed"
+            : "Email Attachment Downloader";
+    }
+
+    private void ShowSignInPrompt()
+    {
+        if (_needSignIn.Count == 0)
+        {
+            return;
+        }
+
+        SignInNeededForm form;
+        if (_signInForm is { IsDisposed: false })
+        {
+            form = _signInForm;
+        }
+        else
+        {
+            form = new SignInNeededForm();
+            form.SignInRequested += id => _ = SignInFromPromptAsync(id);
+            form.Show();
+            _signInForm = form;
+        }
+
+        foreach ((string id, string name) in _needSignIn)
+        {
+            form.Add(id, name);
+            _lastPrompted[id] = DateTime.UtcNow;
+        }
+
+        form.Activate();
+    }
+
+    private async Task SignInFromPromptAsync(string accountId)
+    {
+        ShowSettings();
+        if (_settingsForm is null || await _settingsForm.SignInAccountAsync(accountId))
+        {
+            ClearSignInNeeded(accountId);
+        }
+    }
+
     private void OnAttachmentSaved(object? sender, AttachmentSavedEventArgs e)
     {
         // Hook point: a future slideshow or screensaver can be told about new pictures here.
@@ -202,6 +296,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _icon.Visible = false;
         _settingsForm?.Close();
         _historyForm?.Close();
+        _signInForm?.Close();
 
         try
         {

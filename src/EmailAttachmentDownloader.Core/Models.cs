@@ -176,7 +176,7 @@ public sealed class AccountProfile
     }
 }
 
-/// <summary>The outcome of one sync of one account.</summary>
+/// <summary>The outcome of one sync of one account. <c>NeedsSignIn</c> means only the user can fix it, by signing in with Google again.</summary>
 public sealed record RunResult(
     string AccountId,
     string AccountName,
@@ -188,7 +188,8 @@ public sealed record RunResult(
     int Duplicates,
     int Failures,
     string? Error,
-    string SaveFolder)
+    string SaveFolder,
+    bool NeedsSignIn = false)
 {
     [JsonIgnore]
     public bool Succeeded => Error is null;

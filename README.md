@@ -161,7 +161,11 @@ application" client will not work, because it needs exact redirect addresses.)
 - The client secret (if you use your own) and the sign-in token are stored with Windows DPAPI like passwords,
   never in `profiles.json`. A client ID is not secret and is kept in `profiles.json`.
 - If Google stops accepting the saved sign-in (you revoked it at <https://myaccount.google.com/permissions>, or
-  changed your Google password), the run fails with "sign in with Google again"; click the button again.
+  changed your Google password), the app does not fail quietly: a **sign-in needed** pop-up appears on top of your
+  other windows, the tray icon's tooltip says so, and the tray menu gets a bold "Sign-in needed..." entry. Choose
+  **Sign in with Google**, approve in the browser, and the account is saved and checked straight away. "Remind me
+  later" closes the pop-up; it comes back at the next failed check after 4 hours (or from the tray menu). Being
+  offline or a Google outage does not trigger it, only a sign-in that has to be redone.
 - Set it up in Settings first; `ead run` and `ead test` then use the saved sign-in. There is no command-line sign-in yet.
 - Gmail only. Microsoft (Outlook.com, Microsoft 365) needs a similar flow that is not built yet.
 
