@@ -79,24 +79,69 @@ begin
   Result := ExpandConstant('{param:SKIPRUNTIMECHECK|0}') = '1';
 end;
 
-{ True when a stable (non-preview) Windows Desktop Runtime 10.x is registered for x64. }
+{ True when DotnetRoot\shared\Microsoft.WindowsDesktop.App contains a stable (non-preview) 10.x folder.
+  This is how Microsoft documents checking for an installed runtime: the folders are what the app host actually loads. }
+function HasDesktopRuntimeIn(const DotnetRoot: String): Boolean;
+var
+  FindRec: TFindRec;
+  Base: String;
+begin
+  Result := False;
+  if DotnetRoot = '' then
+    Exit;
+
+  Base := AddBackslash(DotnetRoot) + 'shared\Microsoft.WindowsDesktop.App\';
+  if FindFirst(Base + '{#RuntimeMajorPrefix}*', FindRec) then
+  begin
+    try
+      repeat
+        if ((FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY) <> 0) and (Pos('-', FindRec.Name) = 0) then
+        begin
+          Log('Found Desktop Runtime ' + FindRec.Name + ' in ' + DotnetRoot);
+          Result := True;
+          Exit;
+        end;
+      until not FindNext(FindRec);
+    finally
+      FindClose(FindRec);
+    end;
+  end;
+end;
+
+{ True when a stable Windows Desktop Runtime 10.x (x64) is installed. Looks where .NET registers itself, then the
+  default location, then DOTNET_ROOT, and finally the registry list some installers also write. }
 function IsDesktopRuntimeInstalled: Boolean;
 var
+  Root: String;
   Names: TArrayOfString;
   I: Integer;
 begin
-  Result := False;
+  Result := True;
+
+  if RegQueryStringValue(HKLM64, 'SOFTWARE\dotnet\Setup\InstalledVersions\x64', 'InstallLocation', Root) then
+    if HasDesktopRuntimeIn(Root) then
+      Exit;
+
+  if HasDesktopRuntimeIn(GetEnv('ProgramW6432') + '\dotnet') then
+    Exit;
+
+  if HasDesktopRuntimeIn(GetEnv('DOTNET_ROOT')) then
+    Exit;
+
   if RegGetValueNames(HKLM64, RuntimeRegKey, Names) then
   begin
     for I := 0 to GetArrayLength(Names) - 1 do
     begin
       if (Pos('{#RuntimeMajorPrefix}', Names[I]) = 1) and (Pos('-', Names[I]) = 0) then
       begin
-        Result := True;
+        Log('Found Desktop Runtime ' + Names[I] + ' in the registry');
         Exit;
       end;
     end;
   end;
+
+  Log('No Desktop Runtime 10.x found');
+  Result := False;
 end;
 
 function OnDownloadProgress(const Url, FileName: String; const Progress, ProgressMax: Int64): Boolean;
@@ -104,6 +149,20 @@ begin
   if Progress = ProgressMax then
     Log('Downloaded ' + FileName);
   Result := True;
+end;
+
+{ CI hook: /DETECTONLY=1 logs whether the runtime was detected and quits without installing anything. }
+function InitializeSetup: Boolean;
+begin
+  Result := True;
+  if ExpandConstant('{param:DETECTONLY|0}') = '1' then
+  begin
+    if IsDesktopRuntimeInstalled then
+      Log('DesktopRuntimeDetected=True')
+    else
+      Log('DesktopRuntimeDetected=False');
+    Result := False;
+  end;
 end;
 
 procedure InitializeWizard;
@@ -202,8 +261,9 @@ begin
     Exit;
   end;
 
+  { The installer reported success, so go on even if detection disagrees; the log records what it saw. }
   if not IsDesktopRuntimeInstalled then
-    Result := 'The .NET Desktop Runtime still was not detected after installing it.' + ManualInstallHint;
+    Log('The .NET installer reported success but the runtime was not detected afterwards.');
 end;
 
 { Adds the CLI folder to the user PATH only if it is not already there. }
