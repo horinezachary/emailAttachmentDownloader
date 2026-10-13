@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2F7FD6"/>
+      <stop offset="1" stop-color="#173F7A"/>
+    </linearGradient>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8FD8FF"/>
+      <stop offset="1" stop-color="#D9F2FF"/>
+    </linearGradient>
+    <clipPath id="photoClip"><rect x="74" y="50" width="108" height="86" rx="4"/></clipPath>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="56" fill="url(#bg)"/>
+  <!-- photo sliding out of the envelope -->
+  <g transform="rotate(-7 128 100)">
+    <rect x="64" y="38" width="128" height="108" rx="9" fill="#FFFFFF"/>
+    <g clip-path="url(#photoClip)">
+      <rect x="74" y="50" width="108" height="86" fill="url(#sky)"/>
+      <circle cx="154" cy="73" r="12" fill="#FFC83D"/>
+      <path d="M74 136 L74 104 L104 78 L128 100 L146 86 L182 118 L182 136 Z" fill="#2FA36B"/>
+      <path d="M74 136 L74 118 L98 108 L124 124 L150 112 L182 128 L182 136 Z" fill="#1E7A4F"/>
+    </g>
+  </g>
+  <!-- envelope -->
+  <path d="M38 124 Q38 112 50 112 L206 112 Q218 112 218 124 L218 196 Q218 214 200 214 L56 214 Q38 214 38 196 Z" fill="#FFF6E3"/>
+  <path d="M47 128 L128 175 L209 128" fill="none" stroke="#E5CD98" stroke-width="7" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M49 205 L104 162 M207 205 L152 162" fill="none" stroke="#E5CD98" stroke-width="6" stroke-linecap="round"/>
+</svg>

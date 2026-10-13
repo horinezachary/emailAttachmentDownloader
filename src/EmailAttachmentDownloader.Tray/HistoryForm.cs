@@ -20,6 +20,7 @@ internal sealed class HistoryForm : Form
         _history = history;
 
         Text = "Recent activity";
+        Icon = AppIcon.ForWindow();
         StartPosition = FormStartPosition.CenterScreen;
         ClientSize = new Size(820, 420);
         MinimumSize = new Size(520, 240);

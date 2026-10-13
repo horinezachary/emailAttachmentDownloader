@@ -57,7 +57,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
         _icon = new NotifyIcon
         {
-            Icon = SystemIcons.Application,
+            Icon = AppIcon.ForTray(),
             Text = "Email Attachment Downloader",
             Visible = true,
             ContextMenuStrip = BuildMenu(),

@@ -84,6 +84,7 @@ internal sealed class SettingsForm : Form
         _originalIds = _working.Select(p => p.Id).ToHashSet();
 
         Text = "Email Attachment Downloader - Settings";
+        Icon = AppIcon.ForWindow();
         StartPosition = FormStartPosition.CenterScreen;
         ClientSize = new Size(880, 700);
         MinimumSize = new Size(760, 560);

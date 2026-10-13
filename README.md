@@ -33,6 +33,7 @@ src/EmailAttachmentDownloader.Tray    Windows tray app (WinForms): settings, his
 src/EmailAttachmentDownloader.Cli     `ead`: list / run / test / set-password / import-legacy.
 tests/EmailAttachmentDownloader.Core.Tests
 docs/DISPLAY.md                       Plan for custom display and a .scr screensaver.
+assets/                               App icon: app-icon.svg (master), app-icon.ico (embedded), app-icon.png.
 ```
 
 The core has no UI dependencies, so the tray app, the CLI, a Windows service, or a screensaver can
@@ -153,7 +154,6 @@ machine can decrypt it) with much less interop code. Credential Manager can be s
 - Whole messages are downloaded for matches. Fetching only the attachment parts over IMAP would
   save bandwidth.
 - Settings are discarded if you close the window without pressing Save (no "unsaved changes" prompt yet).
-- The tray icon is a stock Windows icon.
 - Sign-in is username and password only. OAuth2 (Gmail/Outlook) is possible with MailKit later.
 
 ## Roadmap
