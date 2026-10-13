@@ -34,10 +34,35 @@ src/EmailAttachmentDownloader.Cli     `ead`: list / run / test / set-password / 
 tests/EmailAttachmentDownloader.Core.Tests
 docs/DISPLAY.md                       Plan for custom display and a .scr screensaver.
 assets/                               App icon: app-icon.svg (master), app-icon.ico (embedded), app-icon.png.
+installer/                            Inno Setup script for the Windows installer.
 ```
 
 The core has no UI dependencies, so the tray app, the CLI, a Windows service, or a screensaver can
 all sit on top of it.
+
+## Install
+
+Download `EmailAttachmentDownloader-Setup.exe` from the latest
+[GitHub Release](https://github.com/horinezachary/emailAttachmentDownloader/releases) (or from the
+`EmailAttachmentDownloader-Setup` artifact of any CI run) and run it.
+
+- **No admin rights needed.** It installs for your Windows user only (under `%LOCALAPPDATA%\Programs`).
+- **.NET is handled for you.** The app needs the .NET 10 *Desktop Runtime*. If it is missing, Setup
+  asks, downloads it from Microsoft, checks that the download is signed by Microsoft, and runs it.
+  That one step asks for administrator approval. If anything goes wrong you get a link to install it by hand.
+- **Options:** start with Windows, and add the `ead` command-line tool to your PATH.
+- **Uninstall** from Windows Settings, Apps. It removes the program but **keeps your settings, saved
+  pictures and stored passwords** (they live in `%APPDATA%\EmailAttachmentDownloader` and your picture folders).
+- Windows SmartScreen may warn about an unrecognised publisher, because the installer is not code-signed yet.
+  Choose "More info", then "Run anyway".
+- Silent install for scripts: `EmailAttachmentDownloader-Setup.exe /VERYSILENT /SUPPRESSMSGBOXES`.
+  Add `/SKIPRUNTIMECHECK=1` if the runtime is managed some other way.
+
+### Making a release
+
+Push a tag like `v0.1.0`. CI builds and tests, builds the installer, and attaches it (with a SHA-256
+file) to a new GitHub Release. Versions starting with `0.` are marked as pre-releases. The installer
+script is `installer/EmailAttachmentDownloader.iss` (Inno Setup 6.1 or newer).
 
 ## Build and run
 
@@ -56,7 +81,7 @@ dotnet run --project src/EmailAttachmentDownloader.Cli -- list
 dotnet run --project src/EmailAttachmentDownloader.Cli -- run
 ```
 
-CI uploads ready-to-run `win-x64` builds (framework-dependent) as a workflow artifact.
+CI also uploads ready-to-run `win-x64` builds (framework-dependent, so they need the .NET 10 Desktop Runtime) as a workflow artifact.
 
 ### Moving over from the Java version
 
@@ -154,6 +179,7 @@ machine can decrypt it) with much less interop code. Credential Manager can be s
 - Whole messages are downloaded for matches. Fetching only the attachment parts over IMAP would
   save bandwidth.
 - Settings are discarded if you close the window without pressing Save (no "unsaved changes" prompt yet).
+- The installer's .NET download-and-install path has not been run on a machine without .NET 10 (CI covers install, the CLI, the PATH option and uninstall, but its runner already has .NET). Upgrading over a running copy relies on Windows asking the app to close.
 - Sign-in is username and password only. OAuth2 (Gmail/Outlook) is possible with MailKit later.
 
 ## Roadmap

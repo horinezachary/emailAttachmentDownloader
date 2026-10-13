@@ -3,6 +3,8 @@ name: build
 on:
   push:
     branches: [master, csharp-rewrite]
+    # Releases: push a tag such as v0.1.0 to build the installer and attach it to a GitHub Release.
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
   pull_request:
   workflow_dispatch:
 
@@ -15,6 +17,15 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
+
+      - name: Work out version
+        id: ver
+        shell: pwsh
+        run: |
+          # v1.2.3 tags give 1.2.3; any other build gets 0.0.<run number>.
+          if ($env:GITHUB_REF -match '^refs/tags/v(\d+\.\d+\.\d+)$') { $v = $Matches[1] } else { $v = "0.0.$env:GITHUB_RUN_NUMBER" }
+          "version=$v" >> $env:GITHUB_OUTPUT
+          Write-Host "Version: $v"
 
       - name: Restore
         run: dotnet restore
@@ -35,12 +46,123 @@ jobs:
           Write-Host "::notice title=Test results::total=$($c.total) executed=$($c.executed) passed=$($c.passed) failed=$($c.failed)"
 
       - name: Publish tray app
-        run: dotnet publish src/EmailAttachmentDownloader.Tray -c Release -r win-x64 --self-contained false -o publish/tray
+        run: dotnet publish src/EmailAttachmentDownloader.Tray -c Release -r win-x64 --self-contained false -p:Version=${{ steps.ver.outputs.version }} -o publish/tray
 
       - name: Publish command-line tool
-        run: dotnet publish src/EmailAttachmentDownloader.Cli -c Release -r win-x64 --self-contained false -o publish/cli
+        run: dotnet publish src/EmailAttachmentDownloader.Cli -c Release -r win-x64 --self-contained false -p:Version=${{ steps.ver.outputs.version }} -o publish/cli
 
       - uses: actions/upload-artifact@v4
         with:
           name: EmailAttachmentDownloader-win-x64
-          path: publish/
+          path: |
+            publish/tray
+            publish/cli
+
+      - name: Check the .NET runtime download link still works
+        shell: pwsh
+        run: |
+          # The installer downloads the runtime from this link when it is missing, so a dead link must fail the build.
+          $script = Get-Content installer/EmailAttachmentDownloader.iss -Raw
+          if ($script -notmatch '#define RuntimeUrl "([^"]+)"') { throw "RuntimeUrl not found in the installer script" }
+          $url = $Matches[1]
+          $ok = $false
+          for ($i = 1; $i -le 3 -and -not $ok; $i++) {
+            try {
+              $r = Invoke-WebRequest -Uri $url -Method Head -MaximumRedirection 10 -UseBasicParsing
+              $final = $r.BaseResponse.RequestMessage.RequestUri.AbsoluteUri
+              Write-Host "Attempt ${i}: HTTP $($r.StatusCode) -> $final"
+              if ($r.StatusCode -eq 200 -and $final -match 'windowsdesktop-runtime-10\.\d+\.\d+.*win-x64\.exe') { $ok = $true }
+            } catch {
+              Write-Host "Attempt ${i} failed: $($_.Exception.Message)"
+              Start-Sleep -Seconds 5
+            }
+          }
+          if (-not $ok) { throw "The .NET Desktop Runtime download link did not resolve to a 10.x win-x64 installer: $url" }
+
+      - name: Install Inno Setup if the runner lacks it
+        shell: pwsh
+        run: |
+          function Find-Iscc {
+            foreach ($root in @(${env:ProgramFiles(x86)}, $env:ProgramFiles)) {
+              $hit = Get-ChildItem -Path $root -Filter "Inno Setup*" -Directory -ErrorAction SilentlyContinue |
+                ForEach-Object { Join-Path $_.FullName "ISCC.exe" } | Where-Object { Test-Path $_ } | Select-Object -First 1
+              if ($hit) { return $hit }
+            }
+          }
+          $iscc = Find-Iscc
+          if (-not $iscc) { choco install innosetup -y --no-progress; $iscc = Find-Iscc }
+          if (-not $iscc) { throw "ISCC.exe was not found" }
+          Write-Host "Using $iscc"
+          "ISCC=$iscc" >> $env:GITHUB_ENV
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          & $env:ISCC "/DAppVersion=${{ steps.ver.outputs.version }}" installer/EmailAttachmentDownloader.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed with exit code $LASTEXITCODE" }
+          Get-Item publish/installer/EmailAttachmentDownloader-Setup.exe | Format-List Name, Length
+
+      - name: Smoke-test installer (install, run CLI, uninstall)
+        shell: pwsh
+        run: |
+          # Skips the runtime check: this exercises file layout, the PATH option and uninstall. The runtime download
+          # path needs a machine without .NET 10 and is not covered here.
+          $setup = (Resolve-Path publish/installer/EmailAttachmentDownloader-Setup.exe).Path
+          $dir = Join-Path $env:RUNNER_TEMP "ead-install"
+          $log = Join-Path $env:RUNNER_TEMP "setup.log"
+
+          $p = Start-Process $setup -Wait -PassThru -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SKIPRUNTIMECHECK=1", "/TASKS=addtopath", "/DIR=$dir", "/LOG=$log"
+          if ($p.ExitCode -ne 0) { Get-Content $log -ErrorAction SilentlyContinue | Select-Object -Last 40; throw "Installer exited with $($p.ExitCode)" }
+
+          foreach ($f in "EmailAttachmentDownloader.exe", "cli\ead.exe", "cli\ead.dll", "unins000.exe") {
+            if (-not (Test-Path (Join-Path $dir $f))) { throw "Missing after install: $f" }
+          }
+
+          $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+          if ($userPath -notlike "*$dir\cli*") { throw "The CLI folder was not added to the user PATH" }
+
+          # The published CLI must actually start (uses the SDK's runtime on this runner).
+          dotnet (Join-Path $dir "cli\ead.dll") paths
+          if ($LASTEXITCODE -ne 0) { throw "ead paths failed with exit code $LASTEXITCODE" }
+
+          # The uninstaller hands off to a temporary copy, so wait for the files to disappear.
+          Start-Process (Join-Path $dir "unins000.exe") -Wait -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" | Out-Null
+          $deadline = (Get-Date).AddSeconds(60)
+          while ((Test-Path (Join-Path $dir "EmailAttachmentDownloader.exe")) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 2 }
+          if (Test-Path (Join-Path $dir "EmailAttachmentDownloader.exe")) { throw "Uninstall left the program behind" }
+
+          $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+          if ($userPath -like "*$dir\cli*") { throw "Uninstall left the CLI folder on the user PATH" }
+          Write-Host "::notice title=Installer::install, CLI run and uninstall all passed"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EmailAttachmentDownloader-Setup
+          path: publish/installer/EmailAttachmentDownloader-Setup.exe
+
+  release:
+    needs: build-and-test
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: EmailAttachmentDownloader-Setup
+          path: dist
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd dist
+          sha256sum EmailAttachmentDownloader-Setup.exe > EmailAttachmentDownloader-Setup.exe.sha256
+          # 0.x versions are marked as pre-releases.
+          flags=""
+          if [[ "$GITHUB_REF_NAME" == v0.* ]]; then flags="--prerelease"; fi
+          gh release create "$GITHUB_REF_NAME" \
+            EmailAttachmentDownloader-Setup.exe EmailAttachmentDownloader-Setup.exe.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Email Attachment Downloader $GITHUB_REF_NAME" \
+            --generate-notes $flags
