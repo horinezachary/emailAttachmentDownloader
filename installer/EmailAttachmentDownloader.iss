@@ -64,6 +64,8 @@ Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "Path"; Value
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "Start {#AppName} now"; Flags: nowait postinstall skipifsilent
+; The app's own "update now" runs this installer silently with /RELAUNCH=1, then it should come back up by itself.
+Filename: "{app}\{#AppExe}"; Flags: nowait runasoriginaluser; Check: RelaunchRequested
 
 [Code]
 const
@@ -73,6 +75,11 @@ const
 
 var
   DownloadPage: TDownloadWizardPage;
+
+function RelaunchRequested: Boolean;
+begin
+  Result := ExpandConstant('{param:RELAUNCH|0}') = '1';
+end;
 
 function SkipRuntimeCheck: Boolean;
 begin

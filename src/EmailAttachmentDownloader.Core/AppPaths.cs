@@ -19,5 +19,6 @@ public sealed class AppPaths
     public string HistoryFile => Path.Combine(DataDirectory, "history.jsonl");
     public string CredentialsFile => Path.Combine(DataDirectory, "credentials.json");
     public string LockFile => Path.Combine(DataDirectory, "sync.lock");
+    public string UpdateFile => Path.Combine(DataDirectory, "update.json");
     public string LogFile => Path.Combine(DataDirectory, "logs", "app.log");
 }

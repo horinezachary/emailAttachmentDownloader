@@ -172,6 +172,14 @@ jobs:
           $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
           if ($userPath -notlike "*$dir\cli*") { throw "The CLI folder was not added to the user PATH" }
 
+          # Installing over the existing copy, the way the app's "update now" does (without /RELAUNCH, which would start the app).
+          $p = Start-Process $setup -Wait -PassThru -ArgumentList "/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS", "/SKIPRUNTIMECHECK=1", "/DIR=$dir", "/LOG=$log"
+          if ($p.ExitCode -ne 0) { Get-Content $log -ErrorAction SilentlyContinue | Select-Object -Last 40; throw "Upgrade install exited with $($p.ExitCode)" }
+          foreach ($f in "EmailAttachmentDownloader.exe", "cli\ead.exe", "unins000.exe") {
+            if (-not (Test-Path (Join-Path $dir $f))) { throw "Missing after upgrade: $f" }
+          }
+          if (([Environment]::GetEnvironmentVariable("Path", "User") -split ';' | Where-Object { $_ -eq "$dir\cli" }).Count -ne 1) { throw "The upgrade left the CLI folder on PATH zero or several times" }
+
           # The published CLI must actually start (uses the SDK's runtime on this runner).
           dotnet (Join-Path $dir "cli\ead.dll") paths
           if ($LASTEXITCODE -ne 0) { throw "ead paths failed with exit code $LASTEXITCODE" }
@@ -184,7 +192,7 @@ jobs:
 
           $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
           if ($userPath -like "*$dir\cli*") { throw "Uninstall left the CLI folder on the user PATH" }
-          Write-Host "::notice title=Installer::install, CLI run and uninstall all passed"
+          Write-Host "::notice title=Installer::install, upgrade, CLI run and uninstall all passed"
 
       - uses: actions/upload-artifact@v4
         with:

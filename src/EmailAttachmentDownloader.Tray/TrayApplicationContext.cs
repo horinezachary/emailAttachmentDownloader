@@ -34,6 +34,17 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly Dictionary<string, DateTime> _lastPrompted = new();
     private SignInNeededForm? _signInForm;
 
+    // Updates: checked shortly after startup and then daily, and on demand from the tray menu.
+    private static readonly TimeSpan UpdateStartupDelay = TimeSpan.FromSeconds(20);
+    private static readonly TimeSpan UpdateInterval = TimeSpan.FromHours(24);
+    private readonly UpdateSettingsStore _updateSettings;
+    private readonly UpdateChecker _updateChecker = new();
+    private readonly UpdateDownloader _updateDownloader = new();
+    private readonly System.Windows.Forms.Timer _updateTimer = new();
+    private readonly ToolStripMenuItem _autoUpdate = new("Check for updates automatically") { CheckOnClick = false };
+    private UpdateAvailableForm? _updateForm;
+    private bool _updateCheckRunning;
+
     private SettingsForm? _settingsForm;
     private HistoryForm? _historyForm;
 
@@ -53,6 +64,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _library = new ImageLibrary(_paths.LibraryFile);
         _state = new SyncStateStore(_paths.SyncStateFile);
         _history = new RunHistory(_paths.HistoryFile);
+        _updateSettings = new UpdateSettingsStore(_paths.UpdateFile);
+        DeleteOldUpdateDownloads();
 
         _sync = new MailSyncService(
             _library, _state, _credentials, _paths.LockFile, _loggerFactory.CreateLogger<MailSyncService>());
@@ -72,6 +85,17 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _icon.DoubleClick += (_, _) => ShowSettings();
 
         _scheduler.Start();
+
+        _updateTimer.Tick += async (_, _) =>
+        {
+            _updateTimer.Interval = (int)UpdateInterval.TotalMilliseconds;
+            if (_updateSettings.Current.CheckAutomatically)
+            {
+                await CheckForUpdatesAsync(manual: false);
+            }
+        };
+        _updateTimer.Interval = (int)UpdateStartupDelay.TotalMilliseconds;
+        _updateTimer.Start();
 
         if (_profileStore.LoadWarning is not null)
         {
@@ -128,6 +152,24 @@ internal sealed class TrayApplicationContext : ApplicationContext
             _startWithWindows.Checked = StartupRegistration.IsEnabled();
         };
         menu.Items.Add(_startWithWindows);
+
+        menu.Items.Add("Check for updates now...", null, async (_, _) => await CheckForUpdatesAsync(manual: true));
+        _autoUpdate.Checked = _updateSettings.Current.CheckAutomatically;
+        _autoUpdate.Click += (_, _) =>
+        {
+            bool enable = !_updateSettings.Current.CheckAutomatically;
+            try
+            {
+                _updateSettings.Update(u => u.CheckAutomatically = enable);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                MessageBox.Show("Could not save the setting: " + ex.Message, "Email Attachment Downloader");
+            }
+
+            _autoUpdate.Checked = _updateSettings.Current.CheckAutomatically;
+        };
+        menu.Items.Add(_autoUpdate);
 
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Exit", null, (_, _) => Quit());
@@ -286,6 +328,150 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
     }
 
+    // ----- updates -----------------------------------------------------------------------------
+
+    /// <summary>Installers from earlier updates are no longer needed once the new version is running.</summary>
+    private static void DeleteOldUpdateDownloads()
+    {
+        try
+        {
+            string folder = Path.Combine(Path.GetTempPath(), "EmailAttachmentDownloader-update");
+            if (Directory.Exists(folder))
+            {
+                Directory.Delete(folder, recursive: true);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Still in use or not ours to delete; try again next start.
+        }
+    }
+
+    private async Task CheckForUpdatesAsync(bool manual)
+    {
+        if (_updateCheckRunning)
+        {
+            return;
+        }
+
+        Version? current = AppVersion.Current;
+        if (current is null)
+        {
+            if (manual)
+            {
+                MessageBox.Show("This build does not have a version number, so it cannot check for updates.", "Email Attachment Downloader");
+            }
+
+            return;
+        }
+
+        _updateCheckRunning = true;
+        try
+        {
+            UpdateCheckResult result = await _updateChecker.CheckAsync(current);
+            if (!result.Succeeded)
+            {
+                _loggerFactory.CreateLogger("Updates").LogWarning("Update check failed: {Error}", result.Error);
+                if (manual)
+                {
+                    MessageBox.Show("Could not check for updates. " + result.Error, "Email Attachment Downloader");
+                }
+
+                return;
+            }
+
+            if (result.Update is null)
+            {
+                if (manual)
+                {
+                    MessageBox.Show(
+                        $"You have the latest version ({current.ToString(3)}).",
+                        "Email Attachment Downloader",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
+                }
+
+                return;
+            }
+
+            // Automatic checks respect "Skip this version"; asking by hand always shows it.
+            if (!manual && _updateSettings.Current.SkippedVersion == result.Update.Version.ToString(3))
+            {
+                return;
+            }
+
+            ShowUpdatePrompt(result.Update, current);
+        }
+        finally
+        {
+            _updateCheckRunning = false;
+        }
+    }
+
+    private void ShowUpdatePrompt(ReleaseInfo release, Version current)
+    {
+        if (_updateForm is { IsDisposed: false })
+        {
+            _updateForm.Activate();
+            return;
+        }
+
+        var form = new UpdateAvailableForm(release, current);
+        _updateForm = form;
+        var cancel = new CancellationTokenSource();
+        form.FormClosed += (_, _) => cancel.Cancel();
+        form.SkipRequested += () =>
+        {
+            try
+            {
+                _updateSettings.Update(u => u.SkippedVersion = release.Version.ToString(3));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _loggerFactory.CreateLogger("Updates").LogWarning(ex, "Could not remember the skipped version");
+            }
+
+            form.Close();
+        };
+        form.InstallRequested += () => _ = InstallUpdateAsync(form, release, cancel.Token);
+        form.Show();
+        form.Activate();
+    }
+
+    private async Task InstallUpdateAsync(UpdateAvailableForm form, ReleaseInfo release, CancellationToken ct)
+    {
+        ILogger log = _loggerFactory.CreateLogger("Updates");
+        form.SetBusy(true);
+        form.SetStatus("Starting download...");
+        try
+        {
+            string folder = Path.Combine(Path.GetTempPath(), "EmailAttachmentDownloader-update", release.Version.ToString(3));
+            var progress = new Progress<double>(form.SetProgress);
+            string installer = await _updateDownloader.DownloadAsync(release, folder, progress, ct);
+
+            form.SetStatus("Starting the installer...");
+
+            // /SILENT shows only a progress window. The installer closes this app, replaces it and starts it again.
+            Process.Start(new ProcessStartInfo(installer, "/SILENT /CLOSEAPPLICATIONS /RELAUNCH=1") { UseShellExecute = true });
+            log.LogInformation("Started the installer for {Version}; exiting so it can replace the app.", release.Version);
+            Quit();
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // The window was closed or "Cancel" pressed.
+        }
+        catch (Exception ex) when (ex is UpdateException or OperationCanceledException or HttpRequestException or IOException
+                                       or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
+        {
+            log.LogWarning(ex, "Update to {Version} failed", release.Version);
+            if (!form.IsDisposed)
+            {
+                form.SetBusy(false);
+                form.SetStatus("Update failed: " + ex.Message);
+            }
+        }
+    }
+
     private void OnAttachmentSaved(object? sender, AttachmentSavedEventArgs e)
     {
         // Hook point: a future slideshow or screensaver can be told about new pictures here.
@@ -297,6 +483,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _settingsForm?.Close();
         _historyForm?.Close();
         _signInForm?.Close();
+        _updateTimer.Stop();
+        _updateForm?.Close();
 
         try
         {
@@ -308,6 +496,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
 
         _icon.Dispose();
+        _updateTimer.Dispose();
         _marshal.Dispose();
         _loggerFactory.Dispose();
         ExitThread();

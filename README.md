@@ -59,6 +59,25 @@ Download `EmailAttachmentDownloader-Setup.exe` from the latest
 - Silent install for scripts: `EmailAttachmentDownloader-Setup.exe /VERYSILENT /SUPPRESSMSGBOXES`.
   Add `/SKIPRUNTIMECHECK=1` if the runtime is managed some other way.
 
+### Updates
+
+The tray app checks GitHub for a newer release about 20 seconds after it starts and then once a day. If one
+exists, a window shows what is new and offers **Download and install**, **Remind me later** or **Skip this
+version** (skipped versions are not offered again by the automatic check). Installing downloads the installer,
+checks it against the SHA-256 file published with the release, then runs it silently: the app closes, is
+replaced, and starts again. Settings, passwords and saved pictures are untouched.
+
+- The tray menu has **Check for updates now...** (always shows the newest release, even a skipped one) and
+  **Check for updates automatically** to turn the automatic check off.
+- Only releases that carry both `EmailAttachmentDownloader-Setup.exe` and its `.sha256` file are offered, and only
+  `https://github.com` downloads are accepted. The checksum comes from the same release, so it catches a damaged
+  or swapped download but is not a substitute for code signing.
+- While the app's own version starts with `0.`, pre-releases are offered too (all current releases are
+  pre-releases). A stable `1.x` or newer build is only offered stable releases.
+- Builds are stamped with their version by CI (`v1.2.3` tag gives 1.2.3, other builds 0.0.<run number>); a plain
+  local build is 1.0.0.
+- If the check fails (offline, GitHub rate limit) the automatic check just logs it; the manual one tells you.
+
 ### Making a release
 
 Push a tag like `v0.1.0`. CI builds and tests, builds the installer, and attaches it (with a SHA-256
@@ -204,6 +223,7 @@ Settings and state are in `%APPDATA%\EmailAttachmentDownloader`:
 | File | Contents |
 |---|---|
 | `profiles.json` | Accounts and rules. **No passwords.** |
+| `update.json` | Update preferences: automatic checks on/off and a skipped version. |
 | `credentials.json` | Passwords, Google client secrets and sign-in tokens, encrypted with Windows DPAPI (current user). |
 | `library.json` | Index of every saved picture (hash, path, subject, sender, date). |
 | `sync-state.json` | Per-account progress so only new mail is examined. |
