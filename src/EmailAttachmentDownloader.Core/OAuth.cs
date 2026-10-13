@@ -1,4 +1,5 @@
 using System.Net;
+using System.Reflection;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
@@ -10,8 +11,63 @@ namespace EmailAttachmentDownloader.Core;
 /// <param name="Email">The Google account the token belongs to, when Google says (sign-in only).</param>
 public sealed record OAuthTokens(string AccessToken, string? RefreshToken, DateTimeOffset ExpiresAt, string? Email);
 
-/// <summary>The two secrets an OAuth account needs besides the (non-secret) client ID in the profile.</summary>
-public sealed record OAuthSecrets(string ClientSecret, string RefreshToken);
+/// <summary>
+/// Secrets for an OAuth account that are not saved yet (used by "Test connection"). <paramref name="ClientSecret"/> is only
+/// needed when the account uses its own Google client rather than the built-in one.
+/// </summary>
+public sealed record OAuthSecrets(string? ClientSecret, string RefreshToken);
+
+/// <summary>A Google OAuth client ID and secret.</summary>
+public sealed record GoogleClientCredentials(string ClientId, string ClientSecret);
+
+/// <summary>
+/// Which Google OAuth client an account signs in with: the one built into this build of the app, or the account's own
+/// (a "Desktop app" client from the user's Google Cloud project).
+/// </summary>
+public static class GoogleClient
+{
+    /// <summary>The client baked in at build time, or null for builds made without one (local builds, forks).</summary>
+    public static GoogleClientCredentials? BuiltIn { get; } =
+        FromMetadata(typeof(GoogleClient).Assembly.GetCustomAttributes<System.Reflection.AssemblyMetadataAttribute>()
+            .Select(a => new KeyValuePair<string, string?>(a.Key, a.Value)));
+
+    public static bool HasBuiltIn => BuiltIn is not null;
+
+    internal static GoogleClientCredentials? FromMetadata(IEnumerable<KeyValuePair<string, string?>> metadata)
+    {
+        string? id = null;
+        string? secret = null;
+        foreach (KeyValuePair<string, string?> pair in metadata)
+        {
+            if (pair.Key == "GoogleClientId") id = pair.Value?.Trim();
+            if (pair.Key == "GoogleClientSecret") secret = pair.Value?.Trim();
+        }
+
+        return string.IsNullOrEmpty(id) || string.IsNullOrEmpty(secret) ? null : new GoogleClientCredentials(id, secret);
+    }
+
+    /// <summary>True when the account must supply its own client: it asked to, or this build has no built-in one.</summary>
+    public static bool UsesOwnClient(AccountProfile profile) => UsesOwnClient(profile, BuiltIn);
+
+    internal static bool UsesOwnClient(AccountProfile profile, GoogleClientCredentials? builtIn) =>
+        profile.UseOwnOAuthClient || builtIn is null;
+
+    /// <summary>The client to sign in with, or null if it is not fully known (an own client with no ID or secret yet).</summary>
+    public static GoogleClientCredentials? Resolve(AccountProfile profile, string? ownClientSecret) =>
+        Resolve(profile, ownClientSecret, BuiltIn);
+
+    internal static GoogleClientCredentials? Resolve(AccountProfile profile, string? ownClientSecret, GoogleClientCredentials? builtIn)
+    {
+        if (!UsesOwnClient(profile, builtIn))
+        {
+            return builtIn;
+        }
+
+        return string.IsNullOrWhiteSpace(profile.OAuthClientId) || string.IsNullOrWhiteSpace(ownClientSecret)
+            ? null
+            : new GoogleClientCredentials(profile.OAuthClientId.Trim(), ownClientSecret.Trim());
+    }
+}
 
 /// <summary>Sign-in failed. <see cref="NeedsSignIn"/> means the saved sign-in is no longer valid and the user must sign in again.</summary>
 public sealed class OAuthException : Exception

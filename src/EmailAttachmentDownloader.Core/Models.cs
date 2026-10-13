@@ -60,6 +60,12 @@ public sealed class AccountProfile
     /// <summary>The Google Cloud "Desktop app" OAuth client ID. Not secret (the client secret and refresh token are).</summary>
     public string OAuthClientId { get; set; } = "";
 
+    /// <summary>
+    /// Sign in with <see cref="OAuthClientId"/> and the stored client secret instead of the client built into the app.
+    /// Builds without a built-in client always behave as if this were on.
+    /// </summary>
+    public bool UseOwnOAuthClient { get; set; }
+
     public string SaveFolder { get; set; } = "";
 
     /// <summary>Subject keywords. Empty means "every e-mail".</summary>
@@ -116,7 +122,9 @@ public sealed class AccountProfile
     }
 
     /// <summary>Problems that prevent connecting to the server.</summary>
-    public IReadOnlyList<string> ValidateConnection()
+    public IReadOnlyList<string> ValidateConnection() => ValidateConnection(GoogleClient.BuiltIn);
+
+    internal IReadOnlyList<string> ValidateConnection(GoogleClientCredentials? builtInClient)
     {
         var problems = new List<string>();
         if (string.IsNullOrWhiteSpace(Host)) problems.Add("Server host is required.");
@@ -125,7 +133,11 @@ public sealed class AccountProfile
 
         if (Authentication == AuthMethod.GoogleOAuth)
         {
-            if (string.IsNullOrWhiteSpace(OAuthClientId)) problems.Add("OAuth client ID is required for Google sign-in.");
+            if (GoogleClient.UsesOwnClient(this, builtInClient) && string.IsNullOrWhiteSpace(OAuthClientId))
+            {
+                problems.Add("OAuth client ID is required when using your own Google client.");
+            }
+
             if (!IsGoogleHost(Host)) problems.Add("Google sign-in only works with Gmail servers (imap.gmail.com or pop.gmail.com).");
         }
 
@@ -133,9 +145,11 @@ public sealed class AccountProfile
     }
 
     /// <summary>Problems that prevent a full run (connection settings plus the destination folder).</summary>
-    public IReadOnlyList<string> Validate()
+    public IReadOnlyList<string> Validate() => Validate(GoogleClient.BuiltIn);
+
+    internal IReadOnlyList<string> Validate(GoogleClientCredentials? builtInClient)
     {
-        var problems = new List<string>(ValidateConnection());
+        var problems = new List<string>(ValidateConnection(builtInClient));
         if (string.IsNullOrWhiteSpace(Name)) problems.Add("Name is required.");
         if (string.IsNullOrWhiteSpace(SaveFolder))
         {

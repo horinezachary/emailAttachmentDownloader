@@ -25,6 +25,9 @@ internal sealed class SettingsForm : Form
     private CancellationTokenSource? _signInCts;
     private Control[] _passwordControls = Array.Empty<Control>();
     private Control[] _oauthControls = Array.Empty<Control>();
+    private Control[] _ownClientToggleControls = Array.Empty<Control>();
+    private Control[] _ownClientControls = Array.Empty<Control>();
+    private readonly HashSet<string> _signedOut = new();
     private int _current = -1;
     private bool _loading;
 
@@ -42,6 +45,7 @@ internal sealed class SettingsForm : Form
     private readonly ComboBox _tls = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly TextBox _user = new();
     private readonly ComboBox _auth = new() { DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly CheckBox _ownClient = new() { Text = "Use my own Google OAuth client (advanced)", AutoSize = true };
     private readonly TextBox _clientId = new();
     private readonly TextBox _clientSecret = new()
     {
@@ -172,10 +176,15 @@ internal sealed class SettingsForm : Form
         signInRow.Controls.Add(_signInStatus);
         _signInStatus.Margin = new Padding(8, 8, 0, 0);
 
+        _ownClientToggleControls = AddRow("", _ownClient);
+        _tips.SetToolTip(
+            _ownClient,
+            "Normally Google sign-in uses the client built into this app. Tick this to use a client from your own "
+            + "Google Cloud project instead. Changing it means signing in again.");
         Control[] clientIdRow = AddRow("OAuth client ID", _clientId);
         Control[] clientSecretRow = AddRow("OAuth client secret", _clientSecret);
-        Control[] signInRowControls = AddRow("", signInRow);
-        _oauthControls = clientIdRow.Concat(clientSecretRow).Concat(signInRowControls).ToArray();
+        _ownClientControls = clientIdRow.Concat(clientSecretRow).ToArray();
+        _oauthControls = AddRow("", signInRow);
 
         var folderRow = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, AutoSize = true };
         folderRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -288,6 +297,7 @@ internal sealed class SettingsForm : Form
         _test.Click += async (_, _) => await TestConnectionAsync();
         _scheduled.CheckedChanged += (_, _) => _interval.Enabled = _scheduled.Checked;
         _auth.SelectedIndexChanged += (_, _) => ApplyAuthVisibility();
+        _ownClient.CheckedChanged += (_, _) => OnOwnClientToggled();
         _signIn.Click += async (_, _) => await SignInWithGoogleAsync();
         FormClosing += (_, _) => _signInCts?.Cancel();
         _recipientFilter.CheckedChanged += (_, _) => _toAddresses.Enabled = _recipientFilter.Checked;
@@ -413,6 +423,7 @@ internal sealed class SettingsForm : Form
             _newClientSecrets.Remove(profile.Id);
             _newRefreshTokens.Remove(profile.Id);
             _signedInAs.Remove(profile.Id);
+            _signedOut.Remove(profile.Id);
             _working.RemoveAt(_current);
             _list.Items.RemoveAt(_current);
             _current = -1;
@@ -468,6 +479,7 @@ internal sealed class SettingsForm : Form
             _user.Text = p.UserName;
             _password.Text = _newPasswords.TryGetValue(p.Id, out string? pending) ? pending : "";
             _auth.SelectedIndex = (int)p.Authentication;
+            _ownClient.Checked = p.UseOwnOAuthClient;
             _clientId.Text = p.OAuthClientId;
             _clientSecret.Text = _newClientSecrets.TryGetValue(p.Id, out string? pendingSecret) ? pendingSecret : "";
             ApplyAuthVisibility();
@@ -509,6 +521,7 @@ internal sealed class SettingsForm : Form
         p.UserName = _user.Text.Trim();
         p.Authentication = (AuthMethod)Math.Max(0, _auth.SelectedIndex);
         p.OAuthClientId = _clientId.Text.Trim();
+        p.UseOwnOAuthClient = _ownClient.Checked;
         p.SaveFolder = _folder.Text.Trim();
         p.Keywords = Keywords.Parse(_keywords.Text);
         p.KeywordMode = (KeywordMode)Math.Max(0, _keywordMode.SelectedIndex);
@@ -583,6 +596,35 @@ internal sealed class SettingsForm : Form
         {
             control.Visible = google;
         }
+
+        // With a built-in client the own-client boxes stay tucked away behind the checkbox. Builds without one
+        // have nothing to fall back on, so the boxes are always shown and there is no checkbox.
+        bool hasBuiltIn = GoogleClient.HasBuiltIn;
+        foreach (Control control in _ownClientToggleControls)
+        {
+            control.Visible = google && hasBuiltIn;
+        }
+
+        foreach (Control control in _ownClientControls)
+        {
+            control.Visible = google && (!hasBuiltIn || _ownClient.Checked);
+        }
+    }
+
+    /// <summary>A refresh token only works with the client that issued it, so switching clients means signing in again.</summary>
+    private void OnOwnClientToggled()
+    {
+        ApplyAuthVisibility();
+        if (_loading || _current < 0 || _current >= _working.Count)
+        {
+            return;
+        }
+
+        string id = _working[_current].Id;
+        _newRefreshTokens.Remove(id);
+        _signedInAs.Remove(id);
+        _signedOut.Add(id);
+        UpdateSignInStatus();
     }
 
     private void UpdateSignInStatus()
@@ -600,7 +642,7 @@ internal sealed class SettingsForm : Form
         {
             _signInStatus.Text = "Signed in" + (email is null ? "" : " as " + email) + " (press Save to keep it)";
         }
-        else if (!string.IsNullOrEmpty(_credentials.Get(OAuthKeys.RefreshToken(id))))
+        else if (!_signedOut.Contains(id) && !string.IsNullOrEmpty(_credentials.Get(OAuthKeys.RefreshToken(id))))
         {
             _signInStatus.Text = "Signed in (saved)";
         }
@@ -626,10 +668,11 @@ internal sealed class SettingsForm : Form
 
         CommitEditor();
         AccountProfile profile = _working[_current];
-        string? clientSecret = _newClientSecrets.TryGetValue(profile.Id, out string? typed)
+        string? ownSecret = _newClientSecrets.TryGetValue(profile.Id, out string? typed)
             ? typed
             : _credentials.Get(OAuthKeys.ClientSecret(profile.Id));
-        if (string.IsNullOrWhiteSpace(profile.OAuthClientId) || string.IsNullOrWhiteSpace(clientSecret))
+        GoogleClientCredentials? client = GoogleClient.Resolve(profile, ownSecret);
+        if (client is null)
         {
             MessageBox.Show(
                 this,
@@ -647,9 +690,10 @@ internal sealed class SettingsForm : Form
         try
         {
             OAuthTokens tokens = await _googleOAuth.SignInAsync(
-                profile.OAuthClientId, clientSecret, profile.UserName, OpenInBrowser, _signInCts.Token);
+                client.ClientId, client.ClientSecret, profile.UserName, OpenInBrowser, _signInCts.Token);
 
             _newRefreshTokens[accountId] = tokens.RefreshToken!;
+            _signedOut.Remove(accountId);
             if (tokens.Email is not null)
             {
                 _signedInAs[accountId] = tokens.Email;
@@ -708,9 +752,9 @@ internal sealed class SettingsForm : Form
                                  || !string.IsNullOrEmpty(_credentials.Get(OAuthKeys.ClientSecret(account.Id)));
                 bool hasToken = _newRefreshTokens.ContainsKey(account.Id)
                                 || !string.IsNullOrEmpty(_credentials.Get(OAuthKeys.RefreshToken(account.Id)));
-                if (!hasSecret)
+                if (!hasSecret && GoogleClient.UsesOwnClient(account))
                 {
-                    problems = problems.Append("OAuth client secret is required.").ToList();
+                    problems = problems.Append("OAuth client secret is required when using your own Google client.").ToList();
                 }
 
                 if (!hasToken)
@@ -752,10 +796,17 @@ internal sealed class SettingsForm : Form
                 _credentials.Set(OAuthKeys.ClientSecret(id), secret);
             }
 
+            foreach (string id in _signedOut.Where(key => !_newRefreshTokens.ContainsKey(key)))
+            {
+                _credentials.Remove(OAuthKeys.RefreshToken(id));
+            }
+
             foreach ((string id, string token) in _newRefreshTokens)
             {
                 _credentials.Set(OAuthKeys.RefreshToken(id), token);
             }
+
+            _signedOut.Clear();
 
             _newPasswords.Clear();
             _newClientSecrets.Clear();
@@ -821,10 +872,17 @@ internal sealed class SettingsForm : Form
                 : _credentials.Get(OAuthKeys.ClientSecret(profile.Id));
             string? refreshToken = _newRefreshTokens.TryGetValue(profile.Id, out string? newToken)
                 ? newToken
-                : _credentials.Get(OAuthKeys.RefreshToken(profile.Id));
-            if (string.IsNullOrEmpty(clientSecret) || string.IsNullOrEmpty(refreshToken))
+                : _signedOut.Contains(profile.Id) ? null : _credentials.Get(OAuthKeys.RefreshToken(profile.Id));
+            if (string.IsNullOrEmpty(refreshToken) || GoogleClient.Resolve(profile, clientSecret) is null)
             {
-                MessageBox.Show(this, "Enter the client secret and click \"Sign in with Google\" first.", "Test connection", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show(
+                    this,
+                    GoogleClient.UsesOwnClient(profile)
+                        ? "Enter the client ID and secret and click \"Sign in with Google\" first."
+                        : "Click \"Sign in with Google\" first.",
+                    "Test connection",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
                 return;
             }
 

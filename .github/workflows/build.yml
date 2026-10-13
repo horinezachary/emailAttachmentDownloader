@@ -52,11 +52,40 @@ jobs:
             Write-Host "::error title=Failed test::$($r.testName) :: $msg"
           }
 
+      # The repository secrets CLIENT_ID and CLIENT_SECRET are Google OAuth "Desktop app" client credentials. They are given
+      # only to the publish steps (not to build or test) and are baked into the app by MSBuild, which reads these
+      # environment variables as the GoogleClientId / GoogleClientSecret properties. Forks and pull requests from
+      # forks have no secrets, so their builds simply have no built-in client.
       - name: Publish tray app
+        env:
+          GoogleClientId: ${{ secrets.CLIENT_ID }}
+          GoogleClientSecret: ${{ secrets.CLIENT_SECRET }}
         run: dotnet publish src/EmailAttachmentDownloader.Tray -c Release -r win-x64 --self-contained false -p:Version=${{ steps.ver.outputs.version }} -o publish/tray
 
       - name: Publish command-line tool
+        env:
+          GoogleClientId: ${{ secrets.CLIENT_ID }}
+          GoogleClientSecret: ${{ secrets.CLIENT_SECRET }}
         run: dotnet publish src/EmailAttachmentDownloader.Cli -c Release -r win-x64 --self-contained false -p:Version=${{ steps.ver.outputs.version }} -o publish/cli
+
+      - name: Check the built-in Google client made it into the build
+        shell: pwsh
+        env:
+          GoogleClientId: ${{ secrets.CLIENT_ID }}
+          GoogleClientSecret: ${{ secrets.CLIENT_SECRET }}
+        run: |
+          # Prints only yes/no, never the values.
+          if (-not $env:GoogleClientId -or -not $env:GoogleClientSecret) {
+            Write-Host "::notice title=Google client::No CLIENT_ID / CLIENT_SECRET secrets here, so this build has no built-in Google client (users enter their own)."
+            exit 0
+          }
+          $bytes = [System.IO.File]::ReadAllBytes((Resolve-Path publish/tray/EmailAttachmentDownloader.Core.dll))
+          $text = [System.Text.Encoding]::Latin1.GetString($bytes)
+          $hasId = $text.Contains($env:GoogleClientId)
+          $hasSecret = $text.Contains($env:GoogleClientSecret)
+          Write-Host "Built-in client in Core.dll: id=$hasId secret=$hasSecret"
+          if (-not ($hasId -and $hasSecret)) { throw "CLIENT_ID / CLIENT_SECRET are set but are not in the published build" }
+          Write-Host "::notice title=Google client::Built-in Google client is in the build"
 
       - uses: actions/upload-artifact@v4
         with:

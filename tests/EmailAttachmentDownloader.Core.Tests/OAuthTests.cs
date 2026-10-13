@@ -392,13 +392,20 @@ public class OAuthProfileTests
 
 public class OAuthSyncServiceTests
 {
-    private static MailSyncService Service(TempDir dir, ICredentialStore credentials, GoogleOAuth oauth) => new(
+    private static readonly GoogleClientCredentials BuiltIn = new("builtin.apps.googleusercontent.com", "builtin-secret");
+
+    private static MailSyncService Service(
+        TempDir dir, ICredentialStore credentials, GoogleOAuth oauth, GoogleClientCredentials? builtIn = null) => new(
         new ImageLibrary(dir.File("library.json")),
         new SyncStateStore(dir.File("state.json")),
         credentials,
         dir.File("sync.lock"),
         logger: null,
-        oauth: oauth);
+        oauth: oauth,
+        builtInClient: builtIn);
+
+    private static StubHandler Revoked() =>
+        new(_ => StubHandler.Json(HttpStatusCode.BadRequest, "{\"error\":\"invalid_grant\"}"));
 
     private static AccountProfile Google(TempDir dir) => new()
     {
@@ -460,6 +467,159 @@ public class OAuthSyncServiceTests
         RunResult result = await service.RunAsync(p);
 
         Assert.Contains("No password is stored", result.Error, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task The_built_in_client_signs_in_without_any_stored_client_secret()
+    {
+        using var dir = new TempDir();
+        var credentials = new MemoryCredentialStore();
+        credentials.Set(OAuthKeys.RefreshToken("acct"), "refresh");
+        StubHandler handler = Revoked();
+        MailSyncService service = Service(dir, credentials, new GoogleOAuth(new HttpClient(handler)), BuiltIn);
+        AccountProfile p = Google(dir);
+        p.OAuthClientId = "";
+
+        RunResult result = await service.RunAsync(p);
+
+        Assert.Contains("sign in with Google again", result.Error, StringComparison.OrdinalIgnoreCase);
+        Dictionary<string, string> form = OAuthTestHelpers.Form(Assert.Single(handler.Bodies));
+        Assert.Equal("builtin.apps.googleusercontent.com", form["client_id"]);
+        Assert.Equal("builtin-secret", form["client_secret"]);
+        Assert.Equal("refresh", form["refresh_token"]);
+    }
+
+    [Fact]
+    public async Task An_account_that_chose_its_own_client_uses_it_even_when_one_is_built_in()
+    {
+        using var dir = new TempDir();
+        var credentials = new MemoryCredentialStore();
+        credentials.Set(OAuthKeys.RefreshToken("acct"), "refresh");
+        credentials.Set(OAuthKeys.ClientSecret("acct"), "own-secret");
+        StubHandler handler = Revoked();
+        MailSyncService service = Service(dir, credentials, new GoogleOAuth(new HttpClient(handler)), BuiltIn);
+        AccountProfile p = Google(dir);
+        p.UseOwnOAuthClient = true;
+
+        await service.RunAsync(p);
+
+        Dictionary<string, string> form = OAuthTestHelpers.Form(Assert.Single(handler.Bodies));
+        Assert.Equal("abc.apps.googleusercontent.com", form["client_id"]);
+        Assert.Equal("own-secret", form["client_secret"]);
+    }
+
+    [Fact]
+    public async Task An_own_client_with_no_stored_secret_says_what_is_missing()
+    {
+        using var dir = new TempDir();
+        var credentials = new MemoryCredentialStore();
+        credentials.Set(OAuthKeys.RefreshToken("acct"), "refresh");
+        StubHandler handler = Revoked();
+        MailSyncService service = Service(dir, credentials, new GoogleOAuth(new HttpClient(handler)), BuiltIn);
+        AccountProfile p = Google(dir);
+        p.UseOwnOAuthClient = true;
+
+        RunResult result = await service.RunAsync(p);
+
+        Assert.Contains("own Google OAuth client", result.Error, StringComparison.Ordinal);
+        Assert.Empty(handler.Bodies);
+    }
+}
+
+public class BuiltInGoogleClientTests
+{
+    private static readonly GoogleClientCredentials BuiltIn = new("builtin-id", "builtin-secret");
+
+    private static AccountProfile Account() => new()
+    {
+        Id = "acct",
+        Name = "Frames",
+        UserName = "me@gmail.com",
+        Host = "imap.gmail.com",
+        Authentication = AuthMethod.GoogleOAuth,
+        SaveFolder = Path.Combine(Path.GetTempPath(), "pics"),
+    };
+
+    private static IEnumerable<KeyValuePair<string, string?>> Meta(params (string Key, string? Value)[] items) =>
+        items.Select(i => new KeyValuePair<string, string?>(i.Key, i.Value));
+
+    [Fact]
+    public void The_built_in_client_is_read_from_assembly_metadata_and_needs_both_parts()
+    {
+        GoogleClientCredentials? both = GoogleClient.FromMetadata(Meta(("Other", "x"), ("GoogleClientId", " id "), ("GoogleClientSecret", "sec")));
+        Assert.Equal(new GoogleClientCredentials("id", "sec"), both);
+
+        Assert.Null(GoogleClient.FromMetadata(Meta(("GoogleClientId", "id"))));
+        Assert.Null(GoogleClient.FromMetadata(Meta(("GoogleClientSecret", "sec"))));
+        Assert.Null(GoogleClient.FromMetadata(Meta(("GoogleClientId", ""), ("GoogleClientSecret", "sec"))));
+        Assert.Null(GoogleClient.FromMetadata(Meta()));
+    }
+
+    [Fact]
+    public void An_account_uses_the_built_in_client_unless_it_asks_for_its_own()
+    {
+        AccountProfile p = Account();
+
+        Assert.False(GoogleClient.UsesOwnClient(p, BuiltIn));
+        Assert.Equal(BuiltIn, GoogleClient.Resolve(p, null, BuiltIn));
+
+        p.UseOwnOAuthClient = true;
+        Assert.True(GoogleClient.UsesOwnClient(p, BuiltIn));
+    }
+
+    [Fact]
+    public void An_own_client_needs_both_its_id_and_its_secret()
+    {
+        AccountProfile p = Account();
+        p.UseOwnOAuthClient = true;
+
+        Assert.Null(GoogleClient.Resolve(p, "own-secret", BuiltIn));
+
+        p.OAuthClientId = " own-id ";
+        Assert.Null(GoogleClient.Resolve(p, null, BuiltIn));
+        Assert.Null(GoogleClient.Resolve(p, "  ", BuiltIn));
+        Assert.Equal(new GoogleClientCredentials("own-id", "own-secret"), GoogleClient.Resolve(p, " own-secret ", BuiltIn));
+    }
+
+    [Fact]
+    public void Without_a_built_in_client_every_account_must_use_its_own()
+    {
+        AccountProfile p = Account();
+        p.OAuthClientId = "own-id";
+
+        Assert.True(GoogleClient.UsesOwnClient(p, null));
+        Assert.Equal(new GoogleClientCredentials("own-id", "s"), GoogleClient.Resolve(p, "s", null));
+        Assert.Null(GoogleClient.Resolve(p, null, null));
+    }
+
+    [Fact]
+    public void A_client_id_is_only_required_when_the_account_uses_its_own_client()
+    {
+        AccountProfile p = Account();
+
+        Assert.Empty(p.Validate(BuiltIn));
+        Assert.Contains(p.Validate(null), m => m.Contains("client ID", StringComparison.OrdinalIgnoreCase));
+
+        p.UseOwnOAuthClient = true;
+        Assert.Contains(p.Validate(BuiltIn), m => m.Contains("client ID", StringComparison.OrdinalIgnoreCase));
+
+        p.OAuthClientId = "own-id";
+        Assert.Empty(p.Validate(BuiltIn));
+    }
+
+    [Fact]
+    public void The_own_client_choice_round_trips_and_defaults_to_off()
+    {
+        using var dir = new TempDir();
+        string path = dir.File("profiles.json");
+        AccountProfile p = Account();
+        p.UseOwnOAuthClient = true;
+
+        new ProfileStore(path).Save(new[] { p });
+        Assert.True(Assert.Single(new ProfileStore(path).Load()).UseOwnOAuthClient);
+
+        File.WriteAllText(path, "{\"version\":1,\"profiles\":[{\"id\":\"old\",\"name\":\"Old\"}]}");
+        Assert.False(Assert.Single(new ProfileStore(path).Load()).UseOwnOAuthClient);
     }
 }
 

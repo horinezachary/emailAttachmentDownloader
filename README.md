@@ -82,6 +82,9 @@ dotnet run --project src/EmailAttachmentDownloader.Cli -- list
 dotnet run --project src/EmailAttachmentDownloader.Cli -- run
 ```
 
+Local builds have no built-in Google client (see [Sign in with Google](#sign-in-with-google-oauth)); use an app
+password, or the "use my own Google client" option.
+
 CI also uploads ready-to-run `win-x64` builds (framework-dependent, so they need the .NET 10 Desktop Runtime) as a workflow artifact.
 
 ### Moving over from the Java version
@@ -102,12 +105,41 @@ under **Sign-in method** in Settings.
 the password. Test with the "Test connection" button.
 
 **2. Sign in with Google (OAuth).** You approve the app in your browser and Google hands it a token, so no
-password is stored at all. It needs a one-time setup in Google Cloud, because the app has no shared Google
-client of its own (see [Sign in with Google](#sign-in-with-google-oauth)).
+password is stored at all. Release builds carry a Google client, so there is nothing to set up: choose the
+method, click **Sign in with Google**, approve. Builds made without one (your own local or fork builds), or
+accounts that opt to use their own client, need the one-time Google Cloud setup in
+[Sign in with Google](#sign-in-with-google-oauth).
 
 ### Sign in with Google (OAuth)
 
-One-time setup in [Google Cloud Console](https://console.cloud.google.com/):
+**With the built-in client** (release builds): in Settings set **Sign-in method** to "Sign in with Google
+(OAuth)", server `imap.gmail.com`, your Gmail address as the user name, click **Sign in with Google**, approve
+in the browser, and press **Save**. **Test connection** checks it.
+
+**Where the built-in client comes from.** CI reads the repository secrets `CLIENT_ID` and `CLIENT_SECRET`
+(Settings, Secrets and variables, Actions) and compiles them into `EmailAttachmentDownloader.Core.dll` as
+assembly metadata when it publishes. They are not in the source tree, and a local `dotnet build` has none.
+To build with them locally:
+
+```powershell
+dotnet publish src/EmailAttachmentDownloader.Tray -c Release -p:GoogleClientId=... -p:GoogleClientSecret=...
+```
+
+(The same names work as environment variables.) Things worth knowing:
+
+- A desktop app cannot keep a secret. Google's own guidance accepts that for installed apps, but it means
+  anyone can pull the client ID and secret out of the installer. They identify the *app*, not any user's mail;
+  a user's mail is protected by their own approval and sign-in token. Treat the secret as replaceable: if it is
+  abused, rotate it in Google Cloud and rebuild.
+- An app whose Google verification is incomplete is limited to about 100 users and shows the "Google hasn't
+  verified this app" screen. Reading mail over IMAP needs the restricted scope `https://mail.google.com/`, so
+  public use means going through Google's verification (and, for restricted scopes, a security assessment).
+- A sign-in token only works with the client that issued it. Switching an account between the built-in client and
+  its own client therefore means signing in again.
+
+**Advanced: use your own Google client.** Tick **Use my own Google OAuth client** under the sign-in method to
+supply your own client ID and secret instead. Builds without a built-in client always work this way. The setup
+in [Google Cloud Console](https://console.cloud.google.com/):
 
 1. Select or create a **project**.
 2. **APIs & Services, Library:** enable **Gmail API** (this makes the Gmail permission available in step 4).
@@ -120,18 +152,14 @@ One-time setup in [Google Cloud Console](https://console.cloud.google.com/):
    Left in "Testing", Google expires the sign-in after **7 days**. Unverified apps show a "Google hasn't verified
    this app" screen; for your own project choose Advanced, then "Go to ... (unsafe)".
 6. **Clients, Create client:** application type **Desktop app** (it must be this type), any name. Copy the
-   **client ID** and **client secret**.
+   **client ID** and **client secret** into Settings, then click **Sign in with Google**.
 
 **There is no redirect URI to register.** The "Desktop app" type accepts a loopback address, and the app uses
 `http://127.0.0.1:<a free port>/` for the few seconds the browser needs to hand back the result. (A "Web
 application" client will not work, because it needs exact redirect addresses.)
 
-Then in Settings: set **Sign-in method** to "Sign in with Google (OAuth)", server `imap.gmail.com`, your
-Gmail address as the user name, paste the client ID and secret, click **Sign in with Google**, approve in the
-browser, and press **Save**. **Test connection** checks it.
-
-- The client secret and the sign-in token are stored with Windows DPAPI like passwords, never in `profiles.json`.
-  The client ID is not secret and is kept in `profiles.json`.
+- The client secret (if you use your own) and the sign-in token are stored with Windows DPAPI like passwords,
+  never in `profiles.json`. A client ID is not secret and is kept in `profiles.json`.
 - If Google stops accepting the saved sign-in (you revoked it at <https://myaccount.google.com/permissions>, or
   changed your Google password), the run fails with "sign in with Google again"; click the button again.
 - Set it up in Settings first; `ead run` and `ead test` then use the saved sign-in. There is no command-line sign-in yet.
@@ -220,7 +248,7 @@ machine can decrypt it) with much less interop code. Credential Manager can be s
   save bandwidth.
 - Settings are discarded if you close the window without pressing Save (no "unsaved changes" prompt yet).
 - The installer's .NET download-and-install path has not been run on a machine without .NET 10 (CI covers install, the CLI, the PATH option and uninstall, but its runner already has .NET). Upgrading over a running copy relies on Windows asking the app to close.
-- Google sign-in has only been tested with stubbed Google responses, not against Google itself. Microsoft OAuth is not built. Sign-in must be done in the tray app's Settings (no CLI sign-in).
+- Google sign-in has only been tested with stubbed Google responses, not against Google itself, and the built-in client is only in CI-built releases. Microsoft OAuth is not built. Sign-in must be done in the tray app's Settings (no CLI sign-in).
 
 ## Roadmap
 

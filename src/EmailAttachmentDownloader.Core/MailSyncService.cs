@@ -65,6 +65,7 @@ public sealed class MailSyncService
     private readonly ILogger _log;
     private readonly AttachmentSaver _saver;
     private readonly GoogleOAuth _oauth;
+    private readonly GoogleClientCredentials? _builtInClient;
 
     public MailSyncService(
         ImageLibrary library,
@@ -72,9 +73,11 @@ public sealed class MailSyncService
         ICredentialStore credentials,
         string lockFilePath,
         ILogger<MailSyncService>? logger = null,
-        GoogleOAuth? oauth = null)
+        GoogleOAuth? oauth = null,
+        GoogleClientCredentials? builtInClient = null)
     {
         _oauth = oauth ?? new GoogleOAuth();
+        _builtInClient = builtInClient ?? GoogleClient.BuiltIn;
         _library = library;
         _state = state;
         _credentials = credentials;
@@ -379,15 +382,23 @@ public sealed class MailSyncService
             return new MailAuth(password, null);
         }
 
-        string? clientSecret = secretsOverride?.ClientSecret ?? _credentials.Get(OAuthKeys.ClientSecret(profile.Id));
         string? refreshToken = secretsOverride?.RefreshToken ?? _credentials.Get(OAuthKeys.RefreshToken(profile.Id));
-        if (string.IsNullOrEmpty(clientSecret) || string.IsNullOrEmpty(refreshToken))
+        if (string.IsNullOrEmpty(refreshToken))
         {
             throw new InvalidOperationException(
                 "This account uses Google sign-in but is not signed in yet. Open Settings and choose \"Sign in with Google\".");
         }
 
-        OAuthTokens tokens = await _oauth.RefreshAsync(profile.OAuthClientId, clientSecret, refreshToken, ct).ConfigureAwait(false);
+        // The built-in client needs no stored secret; an account's own client uses the secret saved with the account.
+        string? ownSecret = secretsOverride?.ClientSecret ?? _credentials.Get(OAuthKeys.ClientSecret(profile.Id));
+        GoogleClientCredentials? client = GoogleClient.Resolve(profile, ownSecret, _builtInClient);
+        if (client is null)
+        {
+            throw new InvalidOperationException(
+                "This account uses its own Google OAuth client, but the client ID or secret is missing. Open Settings and enter them.");
+        }
+
+        OAuthTokens tokens = await _oauth.RefreshAsync(client.ClientId, client.ClientSecret, refreshToken, ct).ConfigureAwait(false);
 
         // Google normally keeps the same refresh token; if it ever sends a new one, keep that instead.
         if (secretsOverride is null && !string.IsNullOrEmpty(tokens.RefreshToken) && tokens.RefreshToken != refreshToken)
