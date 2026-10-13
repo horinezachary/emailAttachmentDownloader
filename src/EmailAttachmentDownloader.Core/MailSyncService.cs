@@ -100,7 +100,7 @@ public sealed class MailSyncService
             counts.Checked, counts.Matched, counts.NewFiles, counts.Duplicates, counts.Failures,
             failure, profile.SaveFolder);
 
-        IReadOnlyList<string> problems = profile.Validate();
+        IReadOnlyList<string> problems = profile.Validate(_builtInClient);
         if (problems.Count > 0)
         {
             return Finish(string.Join(" ", problems));
@@ -174,7 +174,7 @@ public sealed class MailSyncService
     public async Task<string> TestConnectionAsync(
         AccountProfile profile, string? password, CancellationToken cancellationToken = default, OAuthSecrets? oauth = null)
     {
-        IReadOnlyList<string> problems = profile.ValidateConnection();
+        IReadOnlyList<string> problems = profile.ValidateConnection(_builtInClient);
         if (problems.Count > 0)
         {
             throw new InvalidOperationException(string.Join(" ", problems));
