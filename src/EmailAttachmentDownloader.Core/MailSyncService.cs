@@ -64,14 +64,17 @@ public sealed class MailSyncService
     private readonly string _lockPath;
     private readonly ILogger _log;
     private readonly AttachmentSaver _saver;
+    private readonly GoogleOAuth _oauth;
 
     public MailSyncService(
         ImageLibrary library,
         SyncStateStore state,
         ICredentialStore credentials,
         string lockFilePath,
-        ILogger<MailSyncService>? logger = null)
+        ILogger<MailSyncService>? logger = null,
+        GoogleOAuth? oauth = null)
     {
+        _oauth = oauth ?? new GoogleOAuth();
         _library = library;
         _state = state;
         _credentials = credentials;
@@ -112,11 +115,7 @@ public sealed class MailSyncService
 
         try
         {
-            string? password = _credentials.Get(profile.Id);
-            if (string.IsNullOrEmpty(password))
-            {
-                throw new InvalidOperationException("No password is stored for this account. Open Settings and enter it.");
-            }
+            MailAuth auth = await ResolveAuthAsync(profile, null, null, cancellationToken).ConfigureAwait(false);
 
             // Another process may have saved files since we last looked.
             _library.Reload();
@@ -134,11 +133,11 @@ public sealed class MailSyncService
 
             if (profile.Protocol == MailProtocol.Imap)
             {
-                await RunImapAsync(profile, password, state, counts, cancellationToken).ConfigureAwait(false);
+                await RunImapAsync(profile, auth, state, counts, cancellationToken).ConfigureAwait(false);
             }
             else
             {
-                await RunPop3Async(profile, password, state, counts, cancellationToken).ConfigureAwait(false);
+                await RunPop3Async(profile, auth, state, counts, cancellationToken).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException)
@@ -148,7 +147,7 @@ public sealed class MailSyncService
         }
         catch (Exception ex)
         {
-            error = Describe(ex);
+            error = Describe(ex, profile);
             _log.LogError(ex, "Sync failed for {Account}", profile.Name);
         }
         finally
@@ -167,7 +166,10 @@ public sealed class MailSyncService
     }
 
     /// <summary>Connects and signs in without downloading anything. Throws with a readable message on failure.</summary>
-    public async Task<string> TestConnectionAsync(AccountProfile profile, string password, CancellationToken cancellationToken = default)
+    /// <param name="password">Used for <see cref="AuthMethod.Password"/> accounts.</param>
+    /// <param name="oauth">Secrets not saved yet; when null, the stored ones are used (Google sign-in accounts).</param>
+    public async Task<string> TestConnectionAsync(
+        AccountProfile profile, string? password, CancellationToken cancellationToken = default, OAuthSecrets? oauth = null)
     {
         IReadOnlyList<string> problems = profile.ValidateConnection();
         if (problems.Count > 0)
@@ -177,10 +179,11 @@ public sealed class MailSyncService
 
         try
         {
+            MailAuth auth = await ResolveAuthAsync(profile, password, oauth, cancellationToken).ConfigureAwait(false);
             if (profile.Protocol == MailProtocol.Imap)
             {
                 using var client = new ImapClient { Timeout = TimeoutMilliseconds };
-                await ConnectAsync(client, profile, password, cancellationToken).ConfigureAwait(false);
+                await ConnectAsync(client, profile, auth, cancellationToken).ConfigureAwait(false);
                 IMailFolder inbox = client.Inbox;
                 await inbox.OpenAsync(FolderAccess.ReadOnly, cancellationToken).ConfigureAwait(false);
                 int count = inbox.Count;
@@ -190,7 +193,7 @@ public sealed class MailSyncService
             else
             {
                 using var client = new Pop3Client { Timeout = TimeoutMilliseconds };
-                await ConnectAsync(client, profile, password, cancellationToken).ConfigureAwait(false);
+                await ConnectAsync(client, profile, auth, cancellationToken).ConfigureAwait(false);
                 int count = await client.GetMessageCountAsync(cancellationToken).ConfigureAwait(false);
                 await client.DisconnectAsync(true, cancellationToken).ConfigureAwait(false);
                 return $"Connected to {profile.Host}. The mailbox has {count} message(s).";
@@ -198,15 +201,15 @@ public sealed class MailSyncService
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            throw new InvalidOperationException(Describe(ex), ex);
+            throw new InvalidOperationException(Describe(ex, profile), ex);
         }
     }
 
     private async Task RunImapAsync(
-        AccountProfile profile, string password, AccountSyncState state, RunCounts counts, CancellationToken ct)
+        AccountProfile profile, MailAuth auth, AccountSyncState state, RunCounts counts, CancellationToken ct)
     {
         using var client = new ImapClient { Timeout = TimeoutMilliseconds };
-        await ConnectAsync(client, profile, password, ct).ConfigureAwait(false);
+        await ConnectAsync(client, profile, auth, ct).ConfigureAwait(false);
 
         IMailFolder inbox = client.Inbox;
         await inbox.OpenAsync(FolderAccess.ReadOnly, ct).ConfigureAwait(false);
@@ -274,10 +277,10 @@ public sealed class MailSyncService
     }
 
     private async Task RunPop3Async(
-        AccountProfile profile, string password, AccountSyncState state, RunCounts counts, CancellationToken ct)
+        AccountProfile profile, MailAuth auth, AccountSyncState state, RunCounts counts, CancellationToken ct)
     {
         using var client = new Pop3Client { Timeout = TimeoutMilliseconds };
-        await ConnectAsync(client, profile, password, ct).ConfigureAwait(false);
+        await ConnectAsync(client, profile, auth, ct).ConfigureAwait(false);
 
         IList<string> uids = await client.GetMessageUidsAsync(ct).ConfigureAwait(false);
         bool canReadHeadersOnly = client.Capabilities.HasFlag(Pop3Capabilities.Top);
@@ -355,10 +358,58 @@ public sealed class MailSyncService
         }
     }
 
-    private static async Task ConnectAsync(MailService client, AccountProfile profile, string password, CancellationToken ct)
+    /// <summary>Either a password or a Google access token, whichever the account signs in with.</summary>
+    private readonly record struct MailAuth(string? Password, string? AccessToken);
+
+    /// <summary>
+    /// Works out how to sign in. Password accounts use the stored (or supplied) password. Google accounts swap the stored
+    /// refresh token for a fresh access token; no password is involved.
+    /// </summary>
+    private async Task<MailAuth> ResolveAuthAsync(
+        AccountProfile profile, string? passwordOverride, OAuthSecrets? secretsOverride, CancellationToken ct)
+    {
+        if (profile.Authentication != AuthMethod.GoogleOAuth)
+        {
+            string? password = string.IsNullOrEmpty(passwordOverride) ? _credentials.Get(profile.Id) : passwordOverride;
+            if (string.IsNullOrEmpty(password))
+            {
+                throw new InvalidOperationException("No password is stored for this account. Open Settings and enter it.");
+            }
+
+            return new MailAuth(password, null);
+        }
+
+        string? clientSecret = secretsOverride?.ClientSecret ?? _credentials.Get(OAuthKeys.ClientSecret(profile.Id));
+        string? refreshToken = secretsOverride?.RefreshToken ?? _credentials.Get(OAuthKeys.RefreshToken(profile.Id));
+        if (string.IsNullOrEmpty(clientSecret) || string.IsNullOrEmpty(refreshToken))
+        {
+            throw new InvalidOperationException(
+                "This account uses Google sign-in but is not signed in yet. Open Settings and choose \"Sign in with Google\".");
+        }
+
+        OAuthTokens tokens = await _oauth.RefreshAsync(profile.OAuthClientId, clientSecret, refreshToken, ct).ConfigureAwait(false);
+
+        // Google normally keeps the same refresh token; if it ever sends a new one, keep that instead.
+        if (secretsOverride is null && !string.IsNullOrEmpty(tokens.RefreshToken) && tokens.RefreshToken != refreshToken)
+        {
+            _credentials.Set(OAuthKeys.RefreshToken(profile.Id), tokens.RefreshToken);
+        }
+
+        return new MailAuth(null, tokens.AccessToken);
+    }
+
+    private static async Task ConnectAsync(MailService client, AccountProfile profile, MailAuth auth, CancellationToken ct)
     {
         await client.ConnectAsync(profile.Host.Trim(), profile.Port, ToSocketOptions(profile.Tls), ct).ConfigureAwait(false);
-        await client.AuthenticateAsync(profile.UserName, password, ct).ConfigureAwait(false);
+
+        if (auth.AccessToken is not null)
+        {
+            await client.AuthenticateAsync(new SaslMechanismOAuth2(profile.UserName, auth.AccessToken), ct).ConfigureAwait(false);
+        }
+        else
+        {
+            await client.AuthenticateAsync(profile.UserName, auth.Password!, ct).ConfigureAwait(false);
+        }
     }
 
     private static SecureSocketOptions ToSocketOptions(TlsMode mode) => mode switch
@@ -368,8 +419,11 @@ public sealed class MailSyncService
         _ => SecureSocketOptions.Auto,
     };
 
-    private static string Describe(Exception ex) => ex switch
+    private static string Describe(Exception ex, AccountProfile profile) => ex switch
     {
+        MailKit.Security.AuthenticationException when profile.Authentication == AuthMethod.GoogleOAuth =>
+            "Gmail rejected the Google sign-in. Check that the user name is the Google account you signed in with, "
+            + "then sign in with Google again in Settings.",
         MailKit.Security.AuthenticationException =>
             "Sign-in was rejected. Check the user name and password (Gmail needs an app password).",
         SslHandshakeException => "Could not establish a secure connection: " + ex.Message,

@@ -146,8 +146,12 @@ async Task<int> TestAsync(string[] names)
     }
 
     AccountProfile profile = FindProfile(names[0]) ?? throw new InvalidOperationException($"No account named \"{names[0]}\".");
-    string password = credentials.Get(profile.Id)
-        ?? throw new InvalidOperationException("No password is stored for this account. Run: ead set-password \"" + profile.Name + "\"");
+    // Google sign-in accounts use the secrets saved by the tray app's Settings; only password accounts need one here.
+    string? password = credentials.Get(profile.Id);
+    if (profile.Authentication == AuthMethod.Password && string.IsNullOrEmpty(password))
+    {
+        throw new InvalidOperationException("No password is stored for this account. Run: ead set-password \"" + profile.Name + "\"");
+    }
 
     var service = new MailSyncService(
         new ImageLibrary(paths.LibraryFile),

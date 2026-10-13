@@ -8,7 +8,7 @@ This branch is a ground-up rewrite of the original Java/Swing app in **C# on .NE
 behaviour you relied on is kept; the parts that were unstable or heavy are replaced. The Java
 version is still on `master`.
 
-> **Status: first pass.** It builds, and all 64 unit tests pass on a Windows runner
+> **Status: first pass.** It builds, and all unit tests pass on a Windows runner
 > (`.github/workflows/build.yml`, which also publishes ready-to-run `win-x64` builds as an
 > artifact). It was written without a local .NET SDK, so CI was its first real compile. What has
 > **not** been exercised: the IMAP/POP3 code against a real mail server, and the tray UI on screen.
@@ -18,6 +18,7 @@ version is still on `master`.
 
 - Connects over **IMAP or POP3** (TLS) with MailKit.
 - Matches on the **subject**, case-insensitively, using your keywords (any or all).
+- Signs in with a password (for Gmail, an app password) or **Sign in with Google (OAuth)**.
 - Optionally also requires the e-mail to be **sent to** one of your addresses (To or Cc). Useful when
   one mailbox receives mail for several addresses, such as `you+frames@gmail.com`.
 - Saves attachments whose type matches (default `image/*`; add `application/pdf` etc. if you like).
@@ -94,8 +95,47 @@ storage. You can then delete the `.cfg` files and the old `.messages` file.
 
 ### Gmail
 
-Gmail does not accept your normal password over IMAP/POP3. Turn on 2-Step Verification and create an
-**app password**, then use that in Settings. Test with the "Test connection" button.
+Gmail does not accept your normal password over IMAP/POP3. There are two ways in; pick one per account
+under **Sign-in method** in Settings.
+
+**1. App password (simplest).** Turn on 2-Step Verification and create an **app password**, then use that as
+the password. Test with the "Test connection" button.
+
+**2. Sign in with Google (OAuth).** You approve the app in your browser and Google hands it a token, so no
+password is stored at all. It needs a one-time setup in Google Cloud, because the app has no shared Google
+client of its own (see [Sign in with Google](#sign-in-with-google-oauth)).
+
+### Sign in with Google (OAuth)
+
+One-time setup in [Google Cloud Console](https://console.cloud.google.com/):
+
+1. Select or create a **project**.
+2. **APIs & Services, Library:** enable **Gmail API** (this makes the Gmail permission available in step 4).
+3. **Google Auth Platform** (older name: OAuth consent screen): set it up with an app name, your e-mail as
+   the support contact, and audience **External**.
+4. **Data Access:** add the scope `https://mail.google.com/` (listed as the Gmail API's "read, compose, send,
+   and permanently delete all your email" permission). The app only reads mail; Google does not offer a
+   narrower scope for IMAP. `openid` and `email` are also requested, only to show which account signed in.
+5. **Audience:** add your Gmail address as a **test user**, then choose **Publish app** so it is "In production".
+   Left in "Testing", Google expires the sign-in after **7 days**. Unverified apps show a "Google hasn't verified
+   this app" screen; for your own project choose Advanced, then "Go to ... (unsafe)".
+6. **Clients, Create client:** application type **Desktop app** (it must be this type), any name. Copy the
+   **client ID** and **client secret**.
+
+**There is no redirect URI to register.** The "Desktop app" type accepts a loopback address, and the app uses
+`http://127.0.0.1:<a free port>/` for the few seconds the browser needs to hand back the result. (A "Web
+application" client will not work, because it needs exact redirect addresses.)
+
+Then in Settings: set **Sign-in method** to "Sign in with Google (OAuth)", server `imap.gmail.com`, your
+Gmail address as the user name, paste the client ID and secret, click **Sign in with Google**, approve in the
+browser, and press **Save**. **Test connection** checks it.
+
+- The client secret and the sign-in token are stored with Windows DPAPI like passwords, never in `profiles.json`.
+  The client ID is not secret and is kept in `profiles.json`.
+- If Google stops accepting the saved sign-in (you revoked it at <https://myaccount.google.com/permissions>, or
+  changed your Google password), the run fails with "sign in with Google again"; click the button again.
+- Set it up in Settings first; `ead run` and `ead test` then use the saved sign-in. There is no command-line sign-in yet.
+- Gmail only. Microsoft (Outlook.com, Microsoft 365) needs a similar flow that is not built yet.
 
 ### Recipient filter
 
@@ -132,7 +172,7 @@ Settings and state are in `%APPDATA%\EmailAttachmentDownloader`:
 | File | Contents |
 |---|---|
 | `profiles.json` | Accounts and rules. **No passwords.** |
-| `credentials.json` | Passwords, encrypted with Windows DPAPI (current user). |
+| `credentials.json` | Passwords, Google client secrets and sign-in tokens, encrypted with Windows DPAPI (current user). |
 | `library.json` | Index of every saved picture (hash, path, subject, sender, date). |
 | `sync-state.json` | Per-account progress so only new mail is examined. |
 | `history.jsonl` | Last 500 runs, shown under "Recent activity". |
@@ -180,7 +220,7 @@ machine can decrypt it) with much less interop code. Credential Manager can be s
   save bandwidth.
 - Settings are discarded if you close the window without pressing Save (no "unsaved changes" prompt yet).
 - The installer's .NET download-and-install path has not been run on a machine without .NET 10 (CI covers install, the CLI, the PATH option and uninstall, but its runner already has .NET). Upgrading over a running copy relies on Windows asking the app to close.
-- Sign-in is username and password only. OAuth2 (Gmail/Outlook) is possible with MailKit later.
+- Google sign-in has only been tested with stubbed Google responses, not against Google itself. Microsoft OAuth is not built. Sign-in must be done in the tray app's Settings (no CLI sign-in).
 
 ## Roadmap
 

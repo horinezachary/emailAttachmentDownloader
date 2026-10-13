@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using EmailAttachmentDownloader.Core;
 
 namespace EmailAttachmentDownloader.Tray;
@@ -17,6 +18,13 @@ internal sealed class SettingsForm : Form
     private readonly List<AccountProfile> _working;
     private readonly HashSet<string> _originalIds;
     private readonly Dictionary<string, string> _newPasswords = new();
+    private readonly Dictionary<string, string> _newClientSecrets = new();
+    private readonly Dictionary<string, string> _newRefreshTokens = new();
+    private readonly Dictionary<string, string> _signedInAs = new();
+    private readonly GoogleOAuth _googleOAuth = new();
+    private CancellationTokenSource? _signInCts;
+    private Control[] _passwordControls = Array.Empty<Control>();
+    private Control[] _oauthControls = Array.Empty<Control>();
     private int _current = -1;
     private bool _loading;
 
@@ -33,6 +41,16 @@ internal sealed class SettingsForm : Form
     private readonly NumericUpDown _port = new() { Minimum = 1, Maximum = 65535, Value = 993 };
     private readonly ComboBox _tls = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly TextBox _user = new();
+    private readonly ComboBox _auth = new() { DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly TextBox _clientId = new();
+    private readonly TextBox _clientSecret = new()
+    {
+        UseSystemPasswordChar = true,
+        PlaceholderText = "Leave blank to keep the stored secret",
+    };
+
+    private readonly Button _signIn = new() { Text = "Sign in with Google", AutoSize = true };
+    private readonly Label _signInStatus = new() { AutoSize = true, Anchor = AnchorStyles.Left, ForeColor = SystemColors.GrayText };
     private readonly TextBox _password = new()
     {
         UseSystemPasswordChar = true,
@@ -92,6 +110,7 @@ internal sealed class SettingsForm : Form
         _protocol.Items.AddRange(new object[] { "IMAP", "POP3" });
         _tls.Items.AddRange(new object[] { "Automatic", "SSL/TLS (implicit)", "STARTTLS" });
         _keywordMode.Items.AddRange(new object[] { "Any keyword (OR)", "Every keyword (AND)" });
+        _auth.Items.AddRange(new object[] { "Password (Gmail: an app password)", "Sign in with Google (OAuth)" });
 
         BuildLayout();
         WireEvents();
@@ -140,7 +159,23 @@ internal sealed class SettingsForm : Form
         AddRow("Port", _port);
         AddRow("Security", _tls);
         AddRow("User name", _user);
-        AddRow("Password", _password);
+        AddRow("Sign-in method", _auth);
+        _passwordControls = AddRow("Password", _password);
+        _clientId.PlaceholderText = "From Google Cloud: a \"Desktop app\" OAuth client";
+        _tips.SetToolTip(
+            _clientId,
+            "Create an OAuth client of type \"Desktop app\" in Google Cloud and paste its client ID here. "
+            + "No redirect address needs registering. See the README, \"Sign in with Google\".");
+
+        var signInRow = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = false };
+        signInRow.Controls.Add(_signIn);
+        signInRow.Controls.Add(_signInStatus);
+        _signInStatus.Margin = new Padding(8, 8, 0, 0);
+
+        Control[] clientIdRow = AddRow("OAuth client ID", _clientId);
+        Control[] clientSecretRow = AddRow("OAuth client secret", _clientSecret);
+        Control[] signInRowControls = AddRow("", signInRow);
+        _oauthControls = clientIdRow.Concat(clientSecretRow).Concat(signInRowControls).ToArray();
 
         var folderRow = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, AutoSize = true };
         folderRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -219,12 +254,13 @@ internal sealed class SettingsForm : Form
         Controls.Add(buttons);
     }
 
-    private void AddRow(string label, Control control)
+    /// <summary>Adds a labelled row and returns its two controls (label first), so a row can be hidden as a unit.</summary>
+    private Control[] AddRow(string label, Control control)
     {
         int row = _grid.RowCount++;
         _grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        _grid.Controls.Add(
-            new Label { Text = label, AutoSize = true, Anchor = AnchorStyles.Left, Padding = new Padding(0, 6, 0, 0) }, 0, row);
+        var labelControl = new Label { Text = label, AutoSize = true, Anchor = AnchorStyles.Left, Padding = new Padding(0, 6, 0, 0) };
+        _grid.Controls.Add(labelControl, 0, row);
 
         if (control is TextBox or ComboBox or TableLayoutPanel or FlowLayoutPanel)
         {
@@ -236,6 +272,7 @@ internal sealed class SettingsForm : Form
         }
 
         _grid.Controls.Add(control, 1, row);
+        return new Control[] { labelControl, control };
     }
 
     private void WireEvents()
@@ -250,6 +287,9 @@ internal sealed class SettingsForm : Form
         _runNow.Click += (_, _) => SaveAndRun();
         _test.Click += async (_, _) => await TestConnectionAsync();
         _scheduled.CheckedChanged += (_, _) => _interval.Enabled = _scheduled.Checked;
+        _auth.SelectedIndexChanged += (_, _) => ApplyAuthVisibility();
+        _signIn.Click += async (_, _) => await SignInWithGoogleAsync();
+        FormClosing += (_, _) => _signInCts?.Cancel();
         _recipientFilter.CheckedChanged += (_, _) => _toAddresses.Enabled = _recipientFilter.Checked;
         _list.DrawItem += DrawListItem;
         _enabled.CheckedChanged += (_, _) => OnEnabledToggled();
@@ -370,6 +410,9 @@ internal sealed class SettingsForm : Form
         try
         {
             _newPasswords.Remove(profile.Id);
+            _newClientSecrets.Remove(profile.Id);
+            _newRefreshTokens.Remove(profile.Id);
+            _signedInAs.Remove(profile.Id);
             _working.RemoveAt(_current);
             _list.Items.RemoveAt(_current);
             _current = -1;
@@ -410,6 +453,8 @@ internal sealed class SettingsForm : Form
             {
                 _name.Text = _host.Text = _user.Text = _password.Text = _folder.Text = _keywords.Text = _types.Text = "";
                 _toAddresses.Text = "";
+                _clientId.Text = _clientSecret.Text = "";
+                UpdateSignInStatus();
                 return;
             }
 
@@ -422,6 +467,11 @@ internal sealed class SettingsForm : Form
             _tls.SelectedIndex = (int)p.Tls;
             _user.Text = p.UserName;
             _password.Text = _newPasswords.TryGetValue(p.Id, out string? pending) ? pending : "";
+            _auth.SelectedIndex = (int)p.Authentication;
+            _clientId.Text = p.OAuthClientId;
+            _clientSecret.Text = _newClientSecrets.TryGetValue(p.Id, out string? pendingSecret) ? pendingSecret : "";
+            ApplyAuthVisibility();
+            UpdateSignInStatus();
             _folder.Text = p.SaveFolder;
             _keywords.Text = Keywords.Format(p.Keywords);
             _keywordMode.SelectedIndex = (int)p.KeywordMode;
@@ -457,6 +507,8 @@ internal sealed class SettingsForm : Form
         p.Port = (int)_port.Value;
         p.Tls = (TlsMode)Math.Max(0, _tls.SelectedIndex);
         p.UserName = _user.Text.Trim();
+        p.Authentication = (AuthMethod)Math.Max(0, _auth.SelectedIndex);
+        p.OAuthClientId = _clientId.Text.Trim();
         p.SaveFolder = _folder.Text.Trim();
         p.Keywords = Keywords.Parse(_keywords.Text);
         p.KeywordMode = (KeywordMode)Math.Max(0, _keywordMode.SelectedIndex);
@@ -471,6 +523,11 @@ internal sealed class SettingsForm : Form
         if (_password.Text.Length > 0)
         {
             _newPasswords[p.Id] = _password.Text;
+        }
+
+        if (_clientSecret.Text.Trim().Length > 0)
+        {
+            _newClientSecrets[p.Id] = _clientSecret.Text.Trim();
         }
 
         RefreshListItem(_current);
@@ -512,6 +569,129 @@ internal sealed class SettingsForm : Form
         }
     }
 
+    // ----- Google sign-in ----------------------------------------------------------------------
+
+    private void ApplyAuthVisibility()
+    {
+        bool google = _auth.SelectedIndex == (int)AuthMethod.GoogleOAuth;
+        foreach (Control control in _passwordControls)
+        {
+            control.Visible = !google;
+        }
+
+        foreach (Control control in _oauthControls)
+        {
+            control.Visible = google;
+        }
+    }
+
+    private void UpdateSignInStatus()
+    {
+        if (_current < 0 || _current >= _working.Count)
+        {
+            _signInStatus.Text = "";
+            return;
+        }
+
+        string id = _working[_current].Id;
+        _signedInAs.TryGetValue(id, out string? email);
+
+        if (_newRefreshTokens.ContainsKey(id))
+        {
+            _signInStatus.Text = "Signed in" + (email is null ? "" : " as " + email) + " (press Save to keep it)";
+        }
+        else if (!string.IsNullOrEmpty(_credentials.Get(OAuthKeys.RefreshToken(id))))
+        {
+            _signInStatus.Text = "Signed in (saved)";
+        }
+        else
+        {
+            _signInStatus.Text = "Not signed in";
+        }
+    }
+
+    /// <summary>Opens Google's page in the default browser; the button turns into "Cancel sign-in" while waiting.</summary>
+    private async Task SignInWithGoogleAsync()
+    {
+        if (_signInCts is not null)
+        {
+            _signInCts.Cancel();
+            return;
+        }
+
+        if (_current < 0)
+        {
+            return;
+        }
+
+        CommitEditor();
+        AccountProfile profile = _working[_current];
+        string? clientSecret = _newClientSecrets.TryGetValue(profile.Id, out string? typed)
+            ? typed
+            : _credentials.Get(OAuthKeys.ClientSecret(profile.Id));
+        if (string.IsNullOrWhiteSpace(profile.OAuthClientId) || string.IsNullOrWhiteSpace(clientSecret))
+        {
+            MessageBox.Show(
+                this,
+                "Enter the OAuth client ID and client secret first. The README explains how to create them in Google Cloud.",
+                "Sign in with Google",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+            return;
+        }
+
+        string accountId = profile.Id;
+        _signInCts = new CancellationTokenSource();
+        _signIn.Text = "Cancel sign-in";
+        _status.Text = "Finish signing in in your browser. This waits up to 5 minutes.";
+        try
+        {
+            OAuthTokens tokens = await _googleOAuth.SignInAsync(
+                profile.OAuthClientId, clientSecret, profile.UserName, OpenInBrowser, _signInCts.Token);
+
+            _newRefreshTokens[accountId] = tokens.RefreshToken!;
+            if (tokens.Email is not null)
+            {
+                _signedInAs[accountId] = tokens.Email;
+            }
+
+            _status.Text = "Signed in with Google. Press Save to keep it.";
+
+            // Compare the way Gmail does (dots and case do not matter in Gmail addresses).
+            if (tokens.Email is not null && Recipients.Normalize(tokens.Email) != Recipients.Normalize(profile.UserName))
+            {
+                MessageBox.Show(
+                    this,
+                    $"You signed in as {tokens.Email}, but this account's user name is {profile.UserName}. "
+                    + "Gmail only accepts the sign-in if they match, so change the user name or sign in again with the right account.",
+                    "Different account",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            _status.Text = "Sign-in cancelled.";
+        }
+        catch (OAuthException ex)
+        {
+            _status.Text = "";
+            MessageBox.Show(this, ex.Message, "Sign in with Google", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+        finally
+        {
+            _signInCts?.Dispose();
+            _signInCts = null;
+            _signIn.Text = "Sign in with Google";
+            UpdateSignInStatus();
+        }
+    }
+
+    private static void OpenInBrowser(string url)
+    {
+        Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+    }
+
     // ----- actions -----------------------------------------------------------------------------
 
     private bool SaveAll()
@@ -520,11 +700,31 @@ internal sealed class SettingsForm : Form
 
         for (int i = 0; i < _working.Count; i++)
         {
-            IReadOnlyList<string> problems = _working[i].Validate();
-            bool hasPassword = _newPasswords.ContainsKey(_working[i].Id) || _credentials.Get(_working[i].Id) is not null;
-            if (!hasPassword)
+            AccountProfile account = _working[i];
+            IReadOnlyList<string> problems = account.Validate();
+            if (account.Authentication == AuthMethod.GoogleOAuth)
             {
-                problems = problems.Append("Password is required.").ToList();
+                bool hasSecret = _newClientSecrets.ContainsKey(account.Id)
+                                 || !string.IsNullOrEmpty(_credentials.Get(OAuthKeys.ClientSecret(account.Id)));
+                bool hasToken = _newRefreshTokens.ContainsKey(account.Id)
+                                || !string.IsNullOrEmpty(_credentials.Get(OAuthKeys.RefreshToken(account.Id)));
+                if (!hasSecret)
+                {
+                    problems = problems.Append("OAuth client secret is required.").ToList();
+                }
+
+                if (!hasToken)
+                {
+                    problems = problems.Append("Click \"Sign in with Google\" to authorise this account.").ToList();
+                }
+            }
+            else
+            {
+                bool hasPassword = _newPasswords.ContainsKey(account.Id) || _credentials.Get(account.Id) is not null;
+                if (!hasPassword)
+                {
+                    problems = problems.Append("Password is required.").ToList();
+                }
             }
 
             if (problems.Count > 0)
@@ -547,14 +747,29 @@ internal sealed class SettingsForm : Form
                 _credentials.Set(id, password);
             }
 
+            foreach ((string id, string secret) in _newClientSecrets)
+            {
+                _credentials.Set(OAuthKeys.ClientSecret(id), secret);
+            }
+
+            foreach ((string id, string token) in _newRefreshTokens)
+            {
+                _credentials.Set(OAuthKeys.RefreshToken(id), token);
+            }
+
             _newPasswords.Clear();
+            _newClientSecrets.Clear();
+            _newRefreshTokens.Clear();
             _password.Text = "";
+            _clientSecret.Text = "";
 
             // Anything that was in the saved list but is gone now has been removed.
             var currentIds = _working.Select(p => p.Id).ToHashSet();
             foreach (string removed in _originalIds.Where(id => !currentIds.Contains(id)))
             {
                 _credentials.Remove(removed);
+                _credentials.Remove(OAuthKeys.ClientSecret(removed));
+                _credentials.Remove(OAuthKeys.RefreshToken(removed));
                 _state.Remove(removed);
             }
 
@@ -569,6 +784,7 @@ internal sealed class SettingsForm : Form
             return false;
         }
 
+        UpdateSignInStatus();
         _status.Text = "Saved.";
         return true;
     }
@@ -595,17 +811,39 @@ internal sealed class SettingsForm : Form
 
         CommitEditor();
         AccountProfile profile = _working[_current];
-        string? password = _newPasswords.TryGetValue(profile.Id, out string? typed) ? typed : _credentials.Get(profile.Id);
-        if (string.IsNullOrEmpty(password))
+        string? password = null;
+        OAuthSecrets? oauth = null;
+
+        if (profile.Authentication == AuthMethod.GoogleOAuth)
         {
-            MessageBox.Show(this, "Type the password first.", "Test connection", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            return;
+            string? clientSecret = _newClientSecrets.TryGetValue(profile.Id, out string? typedSecret)
+                ? typedSecret
+                : _credentials.Get(OAuthKeys.ClientSecret(profile.Id));
+            string? refreshToken = _newRefreshTokens.TryGetValue(profile.Id, out string? newToken)
+                ? newToken
+                : _credentials.Get(OAuthKeys.RefreshToken(profile.Id));
+            if (string.IsNullOrEmpty(clientSecret) || string.IsNullOrEmpty(refreshToken))
+            {
+                MessageBox.Show(this, "Enter the client secret and click \"Sign in with Google\" first.", "Test connection", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            oauth = new OAuthSecrets(clientSecret, refreshToken);
+        }
+        else
+        {
+            password = _newPasswords.TryGetValue(profile.Id, out string? typed) ? typed : _credentials.Get(profile.Id);
+            if (string.IsNullOrEmpty(password))
+            {
+                MessageBox.Show(this, "Type the password first.", "Test connection", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
         }
 
         SetBusy(true, "Connecting...");
         try
         {
-            string message = await _sync.TestConnectionAsync(profile, password);
+            string message = await _sync.TestConnectionAsync(profile, password, oauth: oauth);
             MessageBox.Show(this, message, "Test connection", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         catch (Exception ex)

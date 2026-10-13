@@ -20,6 +20,15 @@ public enum TlsMode
     StartTls = 2,
 }
 
+public enum AuthMethod
+{
+    /// <summary>A password. For Gmail this must be an app password.</summary>
+    Password = 0,
+
+    /// <summary>Sign in with Google (OAuth 2.0). Needs a client ID/secret from Google Cloud; see the README.</summary>
+    GoogleOAuth = 1,
+}
+
 public enum KeywordMode
 {
     /// <summary>The subject must contain at least one keyword.</summary>
@@ -44,6 +53,12 @@ public sealed class AccountProfile
     public int Port { get; set; } = 993;
     public TlsMode Tls { get; set; } = TlsMode.Implicit;
     public string UserName { get; set; } = "";
+
+    /// <summary>How to sign in. The password, client secret and refresh token themselves live in <see cref="ICredentialStore"/>.</summary>
+    public AuthMethod Authentication { get; set; } = AuthMethod.Password;
+
+    /// <summary>The Google Cloud "Desktop app" OAuth client ID. Not secret (the client secret and refresh token are).</summary>
+    public string OAuthClientId { get; set; } = "";
 
     public string SaveFolder { get; set; } = "";
 
@@ -94,6 +109,12 @@ public sealed class AccountProfile
         return Path.Combine(pictures, "EmailPictures");
     }
 
+    public static bool IsGoogleHost(string? host)
+    {
+        string h = (host ?? "").Trim().ToLowerInvariant();
+        return h == "gmail.com" || h == "googlemail.com" || h.EndsWith(".gmail.com", StringComparison.Ordinal) || h.EndsWith(".googlemail.com", StringComparison.Ordinal);
+    }
+
     /// <summary>Problems that prevent connecting to the server.</summary>
     public IReadOnlyList<string> ValidateConnection()
     {
@@ -101,6 +122,13 @@ public sealed class AccountProfile
         if (string.IsNullOrWhiteSpace(Host)) problems.Add("Server host is required.");
         if (Port is < 1 or > 65535) problems.Add("Port must be between 1 and 65535.");
         if (string.IsNullOrWhiteSpace(UserName)) problems.Add("User name is required.");
+
+        if (Authentication == AuthMethod.GoogleOAuth)
+        {
+            if (string.IsNullOrWhiteSpace(OAuthClientId)) problems.Add("OAuth client ID is required for Google sign-in.");
+            if (!IsGoogleHost(Host)) problems.Add("Google sign-in only works with Gmail servers (imap.gmail.com or pop.gmail.com).");
+        }
+
         return problems;
     }
 

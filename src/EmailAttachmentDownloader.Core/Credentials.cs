@@ -37,12 +37,13 @@ public sealed class MemoryCredentialStore : ICredentialStore
 }
 
 /// <summary>
-/// Non-Windows fallback: read-only, taking each password from <c>EAD_PASSWORD_&lt;ACCOUNT-ID&gt;</c>.
+/// Non-Windows fallback: read-only, taking each secret from <c>EAD_PASSWORD_&lt;KEY&gt;</c> (key upper-cased, other characters as underscores).
 /// Intended for headless testing, not for everyday use.
 /// </summary>
 public sealed class EnvironmentCredentialStore : ICredentialStore
 {
-    public static string VariableName(string accountId) => "EAD_PASSWORD_" + accountId.ToUpperInvariant();
+    public static string VariableName(string accountId) =>
+        "EAD_PASSWORD_" + new string(accountId.ToUpperInvariant().Select(c => char.IsAsciiLetterOrDigit(c) ? c : '_').ToArray());
 
     public string? Get(string accountId) => Environment.GetEnvironmentVariable(VariableName(accountId));
 
