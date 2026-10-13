@@ -1,0 +1,37 @@
+name: build
+
+on:
+  push:
+    branches: [master, csharp-rewrite]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore -c Release
+
+      - name: Test
+        run: dotnet test --no-build -c Release --verbosity normal
+
+      - name: Publish tray app
+        run: dotnet publish src/EmailAttachmentDownloader.Tray -c Release -r win-x64 --self-contained false -o publish/tray
+
+      - name: Publish command-line tool
+        run: dotnet publish src/EmailAttachmentDownloader.Cli -c Release -r win-x64 --self-contained false -o publish/cli
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EmailAttachmentDownloader-win-x64
+          path: publish/

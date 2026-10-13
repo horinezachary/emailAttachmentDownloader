@@ -1,0 +1,32 @@
+# Build output
+bin/
+obj/
+publish/
+artifacts/
+
+# IDE / editor
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.swp
+
+# Test and coverage output
+TestResults/
+coverage/
+*.trx
+
+# Runtime data (lives in %APPDATA%, but guard against accidental copies)
+profiles.json
+library.json
+sync-state.json
+credentials.json
+history.jsonl
+*.log
+*.cfg
+.messages
+
+# OS files
+Thumbs.db
+.DS_Store

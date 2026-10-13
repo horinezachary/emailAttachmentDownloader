@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>EmailAttachmentDownloader</AssemblyName>
+    <RootNamespace>EmailAttachmentDownloader.Tray</RootNamespace>
+    <ApplicationHighDpiMode>SystemAware</ApplicationHighDpiMode>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\EmailAttachmentDownloader.Core\EmailAttachmentDownloader.Core.csproj" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="10.*" />
+  </ItemGroup>
+
+</Project>

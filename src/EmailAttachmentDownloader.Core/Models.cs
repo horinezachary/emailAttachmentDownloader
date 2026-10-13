@@ -1,0 +1,161 @@
+using System.Text.Json.Serialization;
+
+namespace EmailAttachmentDownloader.Core;
+
+public enum MailProtocol
+{
+    Imap = 0,
+    Pop3 = 1,
+}
+
+public enum TlsMode
+{
+    /// <summary>Let MailKit choose (implicit TLS on the usual ports, STARTTLS otherwise).</summary>
+    Auto = 0,
+
+    /// <summary>TLS from the first byte (IMAPS 993 / POP3S 995).</summary>
+    Implicit = 1,
+
+    /// <summary>Plain connection upgraded with STARTTLS.</summary>
+    StartTls = 2,
+}
+
+public enum KeywordMode
+{
+    /// <summary>The subject must contain at least one keyword.</summary>
+    Any = 0,
+
+    /// <summary>The subject must contain every keyword.</summary>
+    All = 1,
+}
+
+/// <summary>One mailbox plus the rules for what to pull from it and where to put it.</summary>
+/// <remarks>The password is deliberately not part of this type; see <see cref="ICredentialStore"/>.</remarks>
+public sealed class AccountProfile
+{
+    public const int MinIntervalMinutes = 5;
+
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string Name { get; set; } = "New account";
+    public bool Enabled { get; set; } = true;
+
+    public MailProtocol Protocol { get; set; } = MailProtocol.Imap;
+    public string Host { get; set; } = "imap.gmail.com";
+    public int Port { get; set; } = 993;
+    public TlsMode Tls { get; set; } = TlsMode.Implicit;
+    public string UserName { get; set; } = "";
+
+    public string SaveFolder { get; set; } = "";
+
+    /// <summary>Subject keywords. Empty means "every e-mail".</summary>
+    public List<string> Keywords { get; set; } = new();
+    public KeywordMode KeywordMode { get; set; } = KeywordMode.Any;
+
+    /// <summary>MIME patterns such as <c>image/*</c> or <c>application/pdf</c>.</summary>
+    public List<string> AttachmentTypes { get; set; } = new() { "image/*" };
+
+    /// <summary>Skip attachments smaller than this many KB (filters out tracking pixels and icons). 0 = keep all.</summary>
+    public int MinSizeKb { get; set; }
+
+    public bool RunOnStartup { get; set; }
+    public bool Scheduled { get; set; }
+    public int IntervalMinutes { get; set; } = 60;
+
+    public AccountProfile Clone()
+    {
+        var copy = (AccountProfile)MemberwiseClone();
+        copy.Keywords = new List<string>(Keywords);
+        copy.AttachmentTypes = new List<string>(AttachmentTypes);
+        return copy;
+    }
+
+    public static string DefaultSaveFolder()
+    {
+        string pictures = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures);
+        if (string.IsNullOrEmpty(pictures))
+        {
+            pictures = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        }
+
+        return Path.Combine(pictures, "EmailPictures");
+    }
+
+    /// <summary>Problems that prevent connecting to the server.</summary>
+    public IReadOnlyList<string> ValidateConnection()
+    {
+        var problems = new List<string>();
+        if (string.IsNullOrWhiteSpace(Host)) problems.Add("Server host is required.");
+        if (Port is < 1 or > 65535) problems.Add("Port must be between 1 and 65535.");
+        if (string.IsNullOrWhiteSpace(UserName)) problems.Add("User name is required.");
+        return problems;
+    }
+
+    /// <summary>Problems that prevent a full run (connection settings plus the destination folder).</summary>
+    public IReadOnlyList<string> Validate()
+    {
+        var problems = new List<string>(ValidateConnection());
+        if (string.IsNullOrWhiteSpace(Name)) problems.Add("Name is required.");
+        if (string.IsNullOrWhiteSpace(SaveFolder))
+        {
+            problems.Add("Save folder is required.");
+        }
+        else if (!Path.IsPathRooted(SaveFolder))
+        {
+            problems.Add("Save folder must be an absolute path.");
+        }
+
+        if (AttachmentTypes.Count == 0 || AttachmentTypes.All(string.IsNullOrWhiteSpace))
+        {
+            problems.Add("At least one attachment type is required (for example image/*).");
+        }
+
+        return problems;
+    }
+}
+
+/// <summary>The outcome of one sync of one account.</summary>
+public sealed record RunResult(
+    string AccountId,
+    string AccountName,
+    DateTimeOffset StartedAt,
+    TimeSpan Duration,
+    int MessagesChecked,
+    int MessagesMatched,
+    int NewFiles,
+    int Duplicates,
+    int Failures,
+    string? Error,
+    string SaveFolder)
+{
+    [JsonIgnore]
+    public bool Succeeded => Error is null;
+
+    [JsonIgnore]
+    public string Summary
+    {
+        get
+        {
+            if (Error is not null)
+            {
+                return $"{AccountName}: {Error}";
+            }
+
+            string text = $"{AccountName}: {MessagesMatched} matching e-mail(s), {NewFiles} new file(s)";
+            if (Duplicates > 0) text += $", {Duplicates} already saved";
+            if (Failures > 0) text += $", {Failures} error(s)";
+            return text;
+        }
+    }
+}
+
+public sealed class AttachmentSavedEventArgs : EventArgs
+{
+    public AttachmentSavedEventArgs(AccountProfile account, LibraryImage image)
+    {
+        Account = account;
+        Image = image;
+    }
+
+    public AccountProfile Account { get; }
+    public LibraryImage Image { get; }
+}

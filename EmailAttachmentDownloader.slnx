@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/EmailAttachmentDownloader.Core/EmailAttachmentDownloader.Core.csproj" />
+    <Project Path="src/EmailAttachmentDownloader.Cli/EmailAttachmentDownloader.Cli.csproj" />
+    <Project Path="src/EmailAttachmentDownloader.Tray/EmailAttachmentDownloader.Tray.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/EmailAttachmentDownloader.Core.Tests/EmailAttachmentDownloader.Core.Tests.csproj" />
+  </Folder>
+</Solution>
