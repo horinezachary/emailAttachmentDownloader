@@ -25,7 +25,8 @@ internal sealed class SettingsForm : Form
     private readonly Button _remove = new() { Text = "Remove", AutoSize = true };
 
     private readonly TextBox _name = new();
-    private readonly CheckBox _enabled = new() { Text = "Enabled" };
+    // CheckBox does not size itself to its text unless AutoSize is set; without it the label is clipped.
+    private readonly CheckBox _enabled = new() { Text = "Enabled", AutoSize = true };
     private readonly ComboBox _protocol = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly TextBox _host = new();
     private readonly NumericUpDown _port = new() { Minimum = 1, Maximum = 65535, Value = 993 };
@@ -43,8 +44,8 @@ internal sealed class SettingsForm : Form
     private readonly ComboBox _keywordMode = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly TextBox _types = new();
     private readonly NumericUpDown _minSize = new() { Minimum = 0, Maximum = 100000, Value = 0 };
-    private readonly CheckBox _runOnStartup = new() { Text = "Check when the app starts" };
-    private readonly CheckBox _scheduled = new() { Text = "Check on a schedule, every" };
+    private readonly CheckBox _runOnStartup = new() { Text = "Check mail when the app starts", AutoSize = true };
+    private readonly CheckBox _scheduled = new() { Text = "Check mail on a schedule, every", AutoSize = true };
     private readonly NumericUpDown _interval = new()
     {
         Minimum = AccountProfile.MinIntervalMinutes,
@@ -58,6 +59,8 @@ internal sealed class SettingsForm : Form
     private readonly Button _save = new() { Text = "Save", AutoSize = true };
     private readonly Button _close = new() { Text = "Close", AutoSize = true };
     private readonly Label _status = new() { AutoSize = true, Anchor = AnchorStyles.Left };
+
+    private readonly ToolTip _tips = new();
 
     private TableLayoutPanel _grid = null!;
 
@@ -79,7 +82,7 @@ internal sealed class SettingsForm : Form
 
         Text = "Email Attachment Downloader - Settings";
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(860, 600);
+        ClientSize = new Size(880, 700);
         MinimumSize = new Size(760, 560);
 
         _protocol.Items.AddRange(new object[] { "IMAP", "POP3" });
@@ -148,6 +151,8 @@ internal sealed class SettingsForm : Form
         AddRow("Attachment types", _types);
         AddRow("Skip smaller than (KB)", _minSize);
         AddRow("", _runOnStartup);
+        _tips.SetToolTip(_runOnStartup, "Takes effect the next time the app starts. Use \"Save and check now\" to check immediately.");
+        _tips.SetToolTip(_enabled, "Turn off to pause this account without deleting it.");
 
         var scheduleRow = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = false };
         scheduleRow.Controls.Add(_scheduled);
