@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>EmailAttachmentDownloader.Core</RootNamespace>
+    <Description>Mail fetching, attachment saving, de-duplication and scheduling for Email Attachment Downloader. No UI.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Floating ranges for the first build; pin exact versions once the first restore succeeds. -->
+    <PackageReference Include="MailKit" Version="4.*" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.*" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.*" />
+  </ItemGroup>
+
+  <!--
+    Optional built-in Google OAuth client for "Sign in with Google" without pasting anything. Supplied at build time,
+    for example: dotnet publish -p:GoogleClientId=... -p:GoogleClientSecret=...  (or the same names as environment
+    variables, which is how CI passes its repository secrets). Without both, the app asks users for their own client.
+    This is stored in the assembly as plain text: Google treats the client secret of an installed app as non-confidential.
+  -->
+  <ItemGroup Condition="'$(GoogleClientId)' != '' And '$(GoogleClientSecret)' != ''">
+    <AssemblyMetadata Include="GoogleClientId" Value="$(GoogleClientId)" />
+    <AssemblyMetadata Include="GoogleClientSecret" Value="$(GoogleClientSecret)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="EmailAttachmentDownloader.Core.Tests" />
+  </ItemGroup>
+
+</Project>

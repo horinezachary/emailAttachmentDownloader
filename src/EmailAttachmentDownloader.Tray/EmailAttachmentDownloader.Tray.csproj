@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>EmailAttachmentDownloader</AssemblyName>
+    <RootNamespace>EmailAttachmentDownloader.Tray</RootNamespace>
+    <ApplicationHighDpiMode>SystemAware</ApplicationHighDpiMode>
+    <ApplicationIcon>..\..\assets\app-icon.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\assets\app-icon.ico" LogicalName="app-icon.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\EmailAttachmentDownloader.Core\EmailAttachmentDownloader.Core.csproj" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="10.*" />
+  </ItemGroup>
+
+</Project>

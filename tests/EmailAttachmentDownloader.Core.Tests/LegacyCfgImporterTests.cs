@@ -1,0 +1,77 @@
+using System.Text;
+
+namespace EmailAttachmentDownloader.Core.Tests;
+
+public class LegacyCfgImporterTests
+{
+    private static string Encode(string data, bool lineBreaks = false) =>
+        Convert.ToBase64String(
+            Encoding.UTF8.GetBytes(data),
+            lineBreaks ? Base64FormattingOptions.InsertLineBreaks : Base64FormattingOptions.None);
+
+    [Fact]
+    public void Parse_maps_every_field()
+    {
+        ImportedProfile result = LegacyCfgImporter.Parse(
+            "C:\\Pics;me@example.com;secret;pop.example.com;pop3;sunset,trail;true;true;2;3600000;", "old");
+
+        AccountProfile p = result.Profile;
+        Assert.Equal("old", p.Name);
+        Assert.Equal("C:\\Pics", p.SaveFolder);
+        Assert.Equal("me@example.com", p.UserName);
+        Assert.Equal("secret", result.Password);
+        Assert.Equal("pop.example.com", p.Host);
+        Assert.Equal(MailProtocol.Pop3, p.Protocol);
+        Assert.Equal(995, p.Port);
+        Assert.Equal(TlsMode.Implicit, p.Tls);
+        Assert.Equal(new[] { "sunset", "trail" }, p.Keywords);
+        Assert.Equal(KeywordMode.Any, p.KeywordMode);
+        Assert.True(p.RunOnStartup);
+        Assert.True(p.Scheduled);
+        Assert.Equal(120, p.IntervalMinutes); // 2 x 3,600,000 ms
+    }
+
+    [Fact]
+    public void A_null_folder_and_empty_keywords_import_cleanly_and_short_intervals_are_clamped()
+    {
+        ImportedProfile result = LegacyCfgImporter.Parse("null;u;p;h;pop3;;false;false;1;1000;", "x");
+
+        Assert.Equal("", result.Profile.SaveFolder);
+        Assert.Empty(result.Profile.Keywords);
+        Assert.False(result.Profile.RunOnStartup);
+        Assert.False(result.Profile.Scheduled);
+        Assert.Equal(AccountProfile.MinIntervalMinutes, result.Profile.IntervalMinutes);
+    }
+
+    [Fact]
+    public void Too_few_fields_is_a_format_error()
+    {
+        Assert.Throws<FormatException>(() => LegacyCfgImporter.Parse("a;b", "x"));
+    }
+
+    [Fact]
+    public void Import_reads_a_base64_file_with_line_breaks()
+    {
+        using var dir = new TempDir();
+        string path = dir.File("old.cfg");
+        File.WriteAllText(
+            path,
+            Encode("C:\\Pics;me@example.com;secret;pop.example.com;pop3;sunset,trail;true;true;2;3600000;", lineBreaks: true));
+
+        ImportedProfile result = LegacyCfgImporter.Import(path);
+
+        Assert.Equal("old", result.Profile.Name);
+        Assert.Equal("secret", result.Password);
+        Assert.Equal("pop.example.com", result.Profile.Host);
+    }
+
+    [Fact]
+    public void Import_rejects_files_that_are_not_base64()
+    {
+        using var dir = new TempDir();
+        string path = dir.File("bad.cfg");
+        File.WriteAllText(path, "this is not base64!!");
+
+        Assert.Throws<FormatException>(() => LegacyCfgImporter.Import(path));
+    }
+}
