@@ -23,7 +23,16 @@ jobs:
         run: dotnet build --no-restore -c Release
 
       - name: Test
-        run: dotnet test --no-build -c Release --verbosity normal
+        run: dotnet test --no-build -c Release --verbosity normal --logger "trx;LogFileName=results.trx" --results-directory TestResults
+
+      - name: Report test counts
+        if: always()
+        shell: pwsh
+        run: |
+          $trx = Get-ChildItem -Path TestResults -Filter *.trx -Recurse | Select-Object -First 1
+          if (-not $trx) { Write-Host "::warning title=Tests::No TRX file was produced"; exit 0 }
+          $c = ([xml](Get-Content $trx.FullName)).TestRun.ResultSummary.Counters
+          Write-Host "::notice title=Test results::total=$($c.total) executed=$($c.executed) passed=$($c.passed) failed=$($c.failed)"
 
       - name: Publish tray app
         run: dotnet publish src/EmailAttachmentDownloader.Tray -c Release -r win-x64 --self-contained false -o publish/tray
