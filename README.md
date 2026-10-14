@@ -81,8 +81,9 @@ replaced, and starts again. Settings, passwords and saved pictures are untouched
 ### Making a release
 
 Push a tag like `v0.1.0`. CI builds and tests, builds the installer, and attaches it (with a SHA-256
-file) to a new GitHub Release. Versions starting with `0.` are marked as pre-releases. The installer
-script is `installer/EmailAttachmentDownloader.iss` (Inno Setup 6.1 or newer).
+file) to a new GitHub Release. Versions starting with `0.` are marked as pre-releases. If you publish the
+release by hand in the GitHub UI instead (which also creates the tag), CI attaches the files to that release and
+leaves its title and notes alone. The installer script is `installer/EmailAttachmentDownloader.iss` (Inno Setup 6.1 or newer).
 
 ## Build and run
 

@@ -211,17 +211,25 @@ jobs:
           name: EmailAttachmentDownloader-Setup
           path: dist
 
-      - name: Create GitHub Release
+      - name: Create or update the GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd dist
           sha256sum EmailAttachmentDownloader-Setup.exe > EmailAttachmentDownloader-Setup.exe.sha256
-          # 0.x versions are marked as pre-releases.
-          flags=""
-          if [[ "$GITHUB_REF_NAME" == v0.* ]]; then flags="--prerelease"; fi
-          gh release create "$GITHUB_REF_NAME" \
-            EmailAttachmentDownloader-Setup.exe EmailAttachmentDownloader-Setup.exe.sha256 \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "Email Attachment Downloader $GITHUB_REF_NAME" \
-            --generate-notes $flags
+          files=(EmailAttachmentDownloader-Setup.exe EmailAttachmentDownloader-Setup.exe.sha256)
+
+          # The release may already exist: publishing one by hand in the GitHub UI creates the tag (which starts
+          # this workflow) and the release together. In that case keep its title and notes and attach the files.
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "Release $GITHUB_REF_NAME already exists; attaching the installer to it."
+            gh release upload "$GITHUB_REF_NAME" "${files[@]}" --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            # 0.x versions are marked as pre-releases.
+            flags=()
+            if [[ "$GITHUB_REF_NAME" == v0.* ]]; then flags+=(--prerelease); fi
+            gh release create "$GITHUB_REF_NAME" "${files[@]}" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Email Attachment Downloader $GITHUB_REF_NAME" \
+              --generate-notes "${flags[@]}"
+          fi
