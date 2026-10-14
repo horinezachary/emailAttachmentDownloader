@@ -27,6 +27,9 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     private readonly ToolStripMenuItem _startWithWindows = new("Start with Windows") { CheckOnClick = false };
     private readonly ToolStripMenuItem _signInNeeded = new("Sign-in needed...") { Visible = false };
+    private readonly ToolStripMenuItem _activityItem = new("") { Visible = false, Enabled = false };
+    private readonly ToolStripMenuItem _folderMenu = new("Open picture folder");
+    private readonly ToolStripSeparator _activitySeparator = new() { Visible = false };
 
     // Accounts whose Google sign-in must be redone, and when each was last put in front of the user.
     private static readonly TimeSpan ReminderInterval = TimeSpan.FromHours(4);
@@ -74,6 +77,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _scheduler = new SyncScheduler(
             _catalog.Snapshot, _sync, _history, _state, _loggerFactory.CreateLogger<SyncScheduler>());
         _scheduler.RunCompleted += OnRunCompleted;
+        _scheduler.ActivityChanged += (_, _) => RunOnUiThread(UpdateTrayText);
 
         _icon = new NotifyIcon
         {
@@ -130,11 +134,17 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _signInNeeded.Font = new Font(_signInNeeded.Font, FontStyle.Bold);
         _signInNeeded.Click += (_, _) => ShowSignInPrompt();
         menu.Items.Add(_signInNeeded);
+        menu.Items.Add(_activityItem);
+        menu.Items.Add(_activitySeparator);
         menu.Items.Add("Check mail now", null, (_, _) => _scheduler.RequestRunAll());
-        menu.Items.Add("Open picture folder", null, (_, _) => OpenPictureFolder());
+
+        // One entry per account, filled in when the menu opens so it always matches the current accounts.
+        _folderMenu.DropDownItems.Add(new ToolStripMenuItem("..."));
+        _folderMenu.DropDownOpening += (_, _) => FillFolderMenu();
+        menu.Items.Add(_folderMenu);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Settings...", null, (_, _) => ShowSettings());
-        menu.Items.Add("Recent activity...", null, (_, _) => ShowHistory());
+        menu.Items.Add("Activity...", null, (_, _) => ShowHistory());
 
         _startWithWindows.Checked = StartupRegistration.IsEnabled();
         _startWithWindows.Click += (_, _) =>
@@ -176,27 +186,56 @@ internal sealed class TrayApplicationContext : ApplicationContext
         return menu;
     }
 
-    private void OpenPictureFolder()
+    private void FillFolderMenu()
     {
-        var folders = _catalog.Snapshot()
-            .Select(p => p.SaveFolder)
+        IReadOnlyList<AccountProfile> accounts = _catalog.Snapshot();
+        _folderMenu.DropDownItems.Clear();
+
+        if (accounts.Count == 0)
+        {
+            _folderMenu.DropDownItems.Add("Add an account...", null, (_, _) => ShowSettings());
+            return;
+        }
+
+        foreach (AccountProfile account in accounts)
+        {
+            string folder = account.SaveFolder;
+            string label = account.Name.Replace("&", "&&") + (account.Enabled ? "" : " (paused)");
+            var item = new ToolStripMenuItem(label, null, (_, _) => OpenFolder(folder)) { ToolTipText = folder };
+            _folderMenu.DropDownItems.Add(item);
+        }
+
+        var distinct = accounts
+            .Select(a => a.SaveFolder)
             .Where(f => !string.IsNullOrWhiteSpace(f))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
+        if (distinct.Count > 1)
+        {
+            _folderMenu.DropDownItems.Add(new ToolStripSeparator());
+            _folderMenu.DropDownItems.Add("All folders", null, (_, _) => distinct.ForEach(OpenFolder));
+        }
+    }
 
-        if (folders.Count == 0)
+    private void OpenFolder(string folder)
+    {
+        if (string.IsNullOrWhiteSpace(folder))
         {
             ShowSettings();
             return;
         }
 
-        foreach (string folder in folders)
+        if (!Directory.Exists(folder))
         {
-            if (Directory.Exists(folder))
-            {
-                Process.Start(new ProcessStartInfo(folder) { UseShellExecute = true });
-            }
+            _icon.ShowBalloonTip(
+                5000,
+                "Email Attachment Downloader",
+                $"Nothing has been saved to {folder} yet. The folder is created when the first picture arrives.",
+                ToolTipIcon.Info);
+            return;
         }
+
+        Process.Start(new ProcessStartInfo(folder) { UseShellExecute = true });
     }
 
     private void ShowSettings()
@@ -219,7 +258,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             return;
         }
 
-        _historyForm = new HistoryForm(_history);
+        _historyForm = new HistoryForm(_history, _scheduler);
         _historyForm.Show();
     }
 
@@ -285,9 +324,40 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private void UpdateSignInIndicators()
     {
         _signInNeeded.Visible = _needSignIn.Count > 0;
-        _icon.Text = _needSignIn.Count > 0
-            ? "Email Attachment Downloader - sign-in needed"
-            : "Email Attachment Downloader";
+        UpdateTrayText();
+    }
+
+    /// <summary>Keeps the tray tooltip and the menu's status line in step with what is running and what needs attention.</summary>
+    private void UpdateTrayText()
+    {
+        IReadOnlyList<SyncActivity> activity = _scheduler.CurrentActivity();
+        string tip = "Email Attachment Downloader";
+
+        if (activity.Count == 0)
+        {
+            _activityItem.Visible = false;
+            _activitySeparator.Visible = _signInNeeded.Visible;
+        }
+        else
+        {
+            SyncActivity first = activity[0];
+            string waiting = activity.Count > 1 ? $" (+{activity.Count - 1} waiting)" : "";
+            _activityItem.Text = (first.IsRunning ? $"{first.AccountName}: {first.Describe()}" : $"{first.AccountName}: waiting") + waiting;
+            _activityItem.Visible = true;
+            _activitySeparator.Visible = true;
+
+            SyncProgress? p = first.Progress;
+            string detail = p is { Total: > 0 } ? $"{p.Done:N0}/{p.Total:N0}" : first.IsRunning ? "checking" : "waiting";
+            tip += $" - {first.AccountName}: {detail}{waiting}";
+        }
+
+        if (_needSignIn.Count > 0)
+        {
+            tip += " - sign-in needed";
+        }
+
+        // The tooltip is limited to 127 characters.
+        _icon.Text = tip.Length <= 127 ? tip : tip[..124] + "...";
     }
 
     private void ShowSignInPrompt()

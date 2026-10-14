@@ -50,6 +50,38 @@ internal sealed class RunCounts
     public int Failures;
 }
 
+/// <summary>Turns "where is this run now" into throttled <see cref="SyncProgress"/> reports.</summary>
+internal sealed class ProgressTracker
+{
+    private readonly Action<SyncProgress> _publish;
+    private readonly AccountProfile _profile;
+    private readonly RunCounts _counts;
+    private readonly ProgressThrottle _throttle = new();
+    private readonly System.Diagnostics.Stopwatch _clock = System.Diagnostics.Stopwatch.StartNew();
+
+    public ProgressTracker(Action<SyncProgress> publish, AccountProfile profile, RunCounts counts)
+    {
+        _publish = publish;
+        _profile = profile;
+        _counts = counts;
+    }
+
+    /// <summary>Reports a step the user should see straight away.</summary>
+    public void Phase(SyncPhase phase, int done = 0, int total = 0) => Publish(phase, done, total);
+
+    /// <summary>Reports progress through a long loop, at most a few times a second.</summary>
+    public void Tick(SyncPhase phase, int done, int total)
+    {
+        if (_throttle.ShouldReport(phase, _clock.ElapsedMilliseconds))
+        {
+            Publish(phase, done, total);
+        }
+    }
+
+    private void Publish(SyncPhase phase, int done, int total) =>
+        _publish(new SyncProgress(_profile.Id, _profile.Name, phase, done, total, _counts.Matched, _counts.NewFiles));
+}
+
 /// <summary>
 /// Runs one sync of one account: connect, find new mail whose subject matches, save the attachments,
 /// remember where it got to. Only mail that arrived since the last successful run is examined.
@@ -89,6 +121,11 @@ public sealed class MailSyncService
     /// <summary>Raised (on the worker thread) for every new file saved.</summary>
     public event EventHandler<AttachmentSavedEventArgs>? AttachmentSaved;
 
+    /// <summary>Raised (on the worker thread, a few times a second at most) while an account is being checked.</summary>
+    public event EventHandler<SyncProgress>? Progress;
+
+    private void Publish(SyncProgress progress) => Progress?.Invoke(this, progress);
+
     public async Task<RunResult> RunAsync(AccountProfile profile, CancellationToken cancellationToken = default)
     {
         DateTimeOffset started = DateTimeOffset.Now;
@@ -118,8 +155,11 @@ public sealed class MailSyncService
         bool cancelled = false;
         AccountSyncState? state = null;
 
+        var tracker = new ProgressTracker(Publish, profile, counts);
+
         try
         {
+            tracker.Phase(profile.Authentication == AuthMethod.GoogleOAuth ? SyncPhase.SigningIn : SyncPhase.Connecting);
             MailAuth auth = await ResolveAuthAsync(profile, null, null, cancellationToken).ConfigureAwait(false);
 
             // Another process may have saved files since we last looked.
@@ -138,11 +178,11 @@ public sealed class MailSyncService
 
             if (profile.Protocol == MailProtocol.Imap)
             {
-                await RunImapAsync(profile, auth, state, counts, cancellationToken).ConfigureAwait(false);
+                await RunImapAsync(profile, auth, state, counts, tracker, cancellationToken).ConfigureAwait(false);
             }
             else
             {
-                await RunPop3Async(profile, auth, state, counts, cancellationToken).ConfigureAwait(false);
+                await RunPop3Async(profile, auth, state, counts, tracker, cancellationToken).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException)
@@ -212,9 +252,10 @@ public sealed class MailSyncService
     }
 
     private async Task RunImapAsync(
-        AccountProfile profile, MailAuth auth, AccountSyncState state, RunCounts counts, CancellationToken ct)
+        AccountProfile profile, MailAuth auth, AccountSyncState state, RunCounts counts, ProgressTracker tracker, CancellationToken ct)
     {
         using var client = new ImapClient { Timeout = TimeoutMilliseconds };
+        tracker.Phase(SyncPhase.Connecting);
         await ConnectAsync(client, profile, auth, ct).ConfigureAwait(false);
 
         IMailFolder inbox = client.Inbox;
@@ -232,16 +273,35 @@ public sealed class MailSyncService
 
         // Fetch only subjects of mail newer than the cursor. Matching is done here, not with a server
         // SEARCH, so every provider behaves the same (Gmail's SUBJECT search matches whole words only).
+        // On a first run the whole mailbox is read, so its size is the total; later runs only read what is new.
+        int listingTotal = lastUid == 0 ? inbox.Count : 0;
+        int read = 0;
+        tracker.Phase(SyncPhase.Listing, 0, listingTotal);
+
+        void OnSummaryFetched(object? sender, MessageSummaryFetchedEventArgs e) =>
+            tracker.Tick(SyncPhase.Listing, Interlocked.Increment(ref read), listingTotal);
+
         var range = new UniqueIdRange(new UniqueId(lastUid + 1), UniqueId.MaxValue);
-        IList<IMessageSummary> summaries = await inbox
-            .FetchAsync(range, MessageSummaryItems.UniqueId | MessageSummaryItems.Envelope, ct)
-            .ConfigureAwait(false);
+        IList<IMessageSummary> summaries;
+        inbox.MessageSummaryFetched += OnSummaryFetched;
+        try
+        {
+            summaries = await inbox
+                .FetchAsync(range, MessageSummaryItems.UniqueId | MessageSummaryItems.Envelope, ct)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            inbox.MessageSummaryFetched -= OnSummaryFetched;
+        }
 
         // "N:*" always returns the newest message even when it is older than N, so filter explicitly.
-        foreach (IMessageSummary summary in summaries.Where(s => s.UniqueId.Id > lastUid).OrderBy(s => s.UniqueId.Id))
+        List<IMessageSummary> fresh = summaries.Where(s => s.UniqueId.Id > lastUid).OrderBy(s => s.UniqueId.Id).ToList();
+        foreach (IMessageSummary summary in fresh)
         {
             ct.ThrowIfCancellationRequested();
             counts.Checked++;
+            tracker.Tick(SyncPhase.Checking, counts.Checked, fresh.Count);
             maxSeen = Math.Max(maxSeen, summary.UniqueId.Id);
 
             if (!Keywords.IsMatch(summary.Envelope?.Subject, profile.Keywords, profile.KeywordMode))
@@ -256,6 +316,7 @@ public sealed class MailSyncService
             }
 
             counts.Matched++;
+            tracker.Tick(SyncPhase.Downloading, counts.Checked, fresh.Count);
             try
             {
                 MimeMessage message = await inbox.GetMessageAsync(summary.UniqueId, ct).ConfigureAwait(false);
@@ -283,16 +344,19 @@ public sealed class MailSyncService
     }
 
     private async Task RunPop3Async(
-        AccountProfile profile, MailAuth auth, AccountSyncState state, RunCounts counts, CancellationToken ct)
+        AccountProfile profile, MailAuth auth, AccountSyncState state, RunCounts counts, ProgressTracker tracker, CancellationToken ct)
     {
         using var client = new Pop3Client { Timeout = TimeoutMilliseconds };
+        tracker.Phase(SyncPhase.Connecting);
         await ConnectAsync(client, profile, auth, ct).ConfigureAwait(false);
 
+        tracker.Phase(SyncPhase.Listing);
         IList<string> uids = await client.GetMessageUidsAsync(ct).ConfigureAwait(false);
         bool canReadHeadersOnly = client.Capabilities.HasFlag(Pop3Capabilities.Top);
 
         var seen = new HashSet<string>(state.Pop3SeenUids, StringComparer.Ordinal);
         var onServer = new HashSet<string>(uids, StringComparer.Ordinal);
+        int toCheck = uids.Count(u => !seen.Contains(u));
 
         for (int index = 0; index < uids.Count; index++)
         {
@@ -305,6 +369,7 @@ public sealed class MailSyncService
             }
 
             counts.Checked++;
+            tracker.Tick(SyncPhase.Checking, counts.Checked, toCheck);
             bool handled = true;
             try
             {
@@ -328,6 +393,7 @@ public sealed class MailSyncService
                     && Recipients.Accepts(profile, recipients))
                 {
                     counts.Matched++;
+                    tracker.Tick(SyncPhase.Downloading, counts.Checked, toCheck);
                     message ??= await client.GetMessageAsync(index, ct).ConfigureAwait(false);
                     Record(profile, _saver.SaveFrom(profile, message), counts);
                 }

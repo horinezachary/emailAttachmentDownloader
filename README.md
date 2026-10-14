@@ -189,6 +189,18 @@ application" client will not work, because it needs exact redirect addresses.)
 - Set it up in Settings first; `ead run` and `ead test` then use the saved sign-in. There is no command-line sign-in yet.
 - Gmail only. Microsoft (Outlook.com, Microsoft 365) needs a similar flow that is not built yet.
 
+### Tray menu, progress and activity
+
+- **Open picture folder** is a sub-menu with one entry per account (paused ones are marked; the tooltip shows the
+  path), plus **All folders** when the accounts use more than one folder. A folder that does not exist yet is
+  created by the first picture saved to it, so the entry says so instead of opening anything.
+- While a check is running, the top of the tray menu and the tray icon's tooltip show where it is, for example
+  `Frames: Checking e-mails: 345 of 1,200`, and how many accounts are waiting their turn.
+- **Activity...** opens a window with a **Running now** section above the list of recent runs. Each account being
+  checked has a status line and a progress bar: connecting, reading the mailbox (the slow part of the first check
+  of a big mailbox, with a count), then checking each new e-mail and downloading the ones that match. Accounts
+  queued behind it are listed as waiting. The bar animates instead of filling while the total is not known yet.
+
 ### Recipient filter
 
 In Settings, tick **Only mail sent to** and list full addresses separated by commas. An e-mail must
@@ -228,7 +240,7 @@ Settings and state are in `%APPDATA%\EmailAttachmentDownloader`:
 | `credentials.json` | Passwords, Google client secrets and sign-in tokens, encrypted with Windows DPAPI (current user). |
 | `library.json` | Index of every saved picture (hash, path, subject, sender, date). |
 | `sync-state.json` | Per-account progress so only new mail is examined. |
-| `history.jsonl` | Last 500 runs, shown under "Recent activity". |
+| `history.jsonl` | Last 500 runs, shown under "Recent runs" in the Activity window. |
 | `logs\app.log` | Diagnostic log, rolled at 1 MB. |
 
 Pictures go wherever you set "Save pictures to" for each account (default `Pictures\EmailPictures`).
