@@ -35,6 +35,7 @@ internal sealed class SettingsForm : Form
     private readonly ListBox _list = new() { Dock = DockStyle.Fill, IntegralHeight = false, DrawMode = DrawMode.OwnerDrawFixed };
     private readonly Button _add = new() { Text = "Add", AutoSize = true };
     private readonly Button _remove = new() { Text = "Remove", AutoSize = true };
+    private readonly Button _importJava = new() { Text = "Import from Java...", AutoSize = true };
 
     private readonly TextBox _name = new();
     // CheckBox does not size itself to its text unless AutoSize is set; without it the label is clipped.
@@ -140,6 +141,8 @@ internal sealed class SettingsForm : Form
         var leftButtons = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, Padding = new Padding(4) };
         leftButtons.Controls.Add(_add);
         leftButtons.Controls.Add(_remove);
+        leftButtons.SetFlowBreak(_remove, true);
+        leftButtons.Controls.Add(_importJava);
 
         var left = new Panel { Dock = DockStyle.Left, Width = 210, Padding = new Padding(8, 8, 0, 8) };
         left.Controls.Add(_list);
@@ -289,6 +292,7 @@ internal sealed class SettingsForm : Form
         _list.SelectedIndexChanged += (_, _) => OnSelectionChanged();
         _add.Click += (_, _) => AddProfile();
         _remove.Click += (_, _) => RemoveProfile();
+        _importJava.Click += (_, _) => ImportFromJava();
         _browse.Click += (_, _) => BrowseForFolder();
         _protocol.SelectedIndexChanged += (_, _) => OnProtocolChanged();
         _save.Click += (_, _) => SaveAll();
@@ -396,6 +400,70 @@ internal sealed class SettingsForm : Form
 
         _current = -1;
         _list.SelectedIndex = _working.Count - 1; // fires OnSelectionChanged, which loads the editor
+    }
+
+    /// <summary>
+    /// Loads accounts from the old Java app's <c>.cfg</c> files. They are added to this window like any new account,
+    /// passwords included, and only become permanent when Save is pressed.
+    /// </summary>
+    private void ImportFromJava()
+    {
+        using var dialog = new OpenFileDialog
+        {
+            Title = "Import accounts from the Java version",
+            Filter = "Old settings files (*.cfg)|*.cfg|All files (*.*)|*.*",
+            Multiselect = true,
+            CheckFileExists = true,
+        };
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+
+        CommitEditor();
+        IReadOnlyList<LegacyImportOutcome> outcomes = LegacyCfgImporter.ImportFiles(dialog.FileNames, _working);
+
+        int added = 0;
+        var skipped = new List<string>();
+        foreach (LegacyImportOutcome outcome in outcomes)
+        {
+            if (outcome.Item is null)
+            {
+                skipped.Add($"{Path.GetFileName(outcome.File)}: {outcome.SkippedBecause}");
+                continue;
+            }
+
+            _working.Add(outcome.Item.Profile);
+            _list.Items.Add(ListText(outcome.Item.Profile));
+            if (outcome.Item.Password.Length > 0)
+            {
+                _newPasswords[outcome.Item.Profile.Id] = outcome.Item.Password;
+            }
+
+            added++;
+        }
+
+        if (added > 0)
+        {
+            _current = -1;
+            _list.SelectedIndex = _working.Count - 1; // loads the last imported account into the editor
+        }
+
+        string message = added > 0
+            ? $"{added} account(s) imported. Check them, then press Save to keep them; passwords are stored encrypted when you save."
+            : "No accounts were imported.";
+        if (skipped.Count > 0)
+        {
+            message += "\n\nSkipped:\n- " + string.Join("\n- ", skipped);
+        }
+
+        _status.Text = added > 0 ? $"Imported {added} account(s). Press Save to keep them." : "Nothing imported.";
+        MessageBox.Show(
+            this,
+            message,
+            "Import from Java",
+            MessageBoxButtons.OK,
+            skipped.Count > 0 && added == 0 ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
     }
 
     private void RemoveProfile()

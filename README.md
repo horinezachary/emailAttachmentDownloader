@@ -109,6 +109,12 @@ CI also uploads ready-to-run `win-x64` builds (framework-dependent, so they need
 
 ### Moving over from the Java version
 
+In Settings, click **Import from Java...** (under the account list), pick one or more of the old `.cfg` files,
+check the accounts that appear, and press **Save**. Passwords are stored encrypted at that point. Files that
+cannot be read, or whose name matches an existing account, are skipped and listed.
+
+From the command line, the same thing:
+
 ```powershell
 ead import-legacy C:\path\to\old\cfg
 ```

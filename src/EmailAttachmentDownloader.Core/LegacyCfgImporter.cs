@@ -5,6 +5,9 @@ namespace EmailAttachmentDownloader.Core;
 /// <summary>A profile read from an old Java-era <c>.cfg</c> file, plus the password it contained.</summary>
 public sealed record ImportedProfile(AccountProfile Profile, string Password);
 
+/// <summary>What happened to one <c>.cfg</c> file: either an account ready to add (<see cref="Item"/>) or the reason it was skipped.</summary>
+public sealed record LegacyImportOutcome(string File, ImportedProfile? Item, string? SkippedBecause);
+
 /// <summary>
 /// Reads the old app's settings files so nobody has to retype them. The old format was a base64
 /// string (which is encoding, not encryption) holding ten semicolon-separated fields:
@@ -13,6 +16,46 @@ public sealed record ImportedProfile(AccountProfile Profile, string Password);
 public static class LegacyCfgImporter
 {
     private const int FieldCount = 10;
+
+    /// <summary>
+    /// Reads several files for adding to the accounts in <paramref name="existing"/>. A file that cannot be read, or whose
+    /// name matches an existing account (or an earlier file in the same batch), is skipped with a reason instead of failing
+    /// the lot. An empty save folder becomes the default one.
+    /// </summary>
+    public static IReadOnlyList<LegacyImportOutcome> ImportFiles(IEnumerable<string> files, IEnumerable<AccountProfile> existing)
+    {
+        var names = new HashSet<string>(existing.Select(p => p.Name), StringComparer.OrdinalIgnoreCase);
+        var outcomes = new List<LegacyImportOutcome>();
+
+        foreach (string file in files)
+        {
+            ImportedProfile item;
+            try
+            {
+                item = Import(file);
+            }
+            catch (Exception ex) when (ex is FormatException or IOException or UnauthorizedAccessException)
+            {
+                outcomes.Add(new LegacyImportOutcome(file, null, ex.Message));
+                continue;
+            }
+
+            if (!names.Add(item.Profile.Name))
+            {
+                outcomes.Add(new LegacyImportOutcome(file, null, "an account with that name already exists"));
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(item.Profile.SaveFolder))
+            {
+                item.Profile.SaveFolder = AccountProfile.DefaultSaveFolder();
+            }
+
+            outcomes.Add(new LegacyImportOutcome(file, item, null));
+        }
+
+        return outcomes;
+    }
 
     public static ImportedProfile Import(string path)
     {

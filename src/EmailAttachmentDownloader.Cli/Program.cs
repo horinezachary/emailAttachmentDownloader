@@ -206,20 +206,15 @@ int ImportLegacy(string[] locations)
 
     var profiles = catalog.Snapshot().ToList();
     int imported = 0;
-    foreach (string file in files)
+    foreach (LegacyImportOutcome outcome in LegacyCfgImporter.ImportFiles(files, profiles))
     {
-        ImportedProfile item = LegacyCfgImporter.Import(file);
-        if (string.IsNullOrWhiteSpace(item.Profile.SaveFolder))
+        if (outcome.Item is null)
         {
-            item.Profile.SaveFolder = AccountProfile.DefaultSaveFolder();
-        }
-
-        if (profiles.Any(p => p.Name.Equals(item.Profile.Name, StringComparison.OrdinalIgnoreCase)))
-        {
-            Console.WriteLine($"Skipped {Path.GetFileName(file)}: an account with that name already exists.");
+            Console.WriteLine($"Skipped {Path.GetFileName(outcome.File)}: {outcome.SkippedBecause?.TrimEnd('.')}.");
             continue;
         }
 
+        ImportedProfile item = outcome.Item;
         profiles.Add(item.Profile);
         if (item.Password.Length > 0)
         {
