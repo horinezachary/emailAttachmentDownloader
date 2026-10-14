@@ -74,4 +74,66 @@ public class LegacyCfgImporterTests
 
         Assert.Throws<FormatException>(() => LegacyCfgImporter.Import(path));
     }
+
+    private static string WriteCfg(TempDir dir, string fileName, string data)
+    {
+        string path = dir.File(fileName);
+        File.WriteAllText(path, Encode(data), Encoding.ASCII);
+        return path;
+    }
+
+    [Fact]
+    public void ImportFiles_reads_several_files_and_defaults_a_blank_folder()
+    {
+        using var dir = new TempDir();
+        string a = WriteCfg(dir, "frames.cfg", "C:\\Pics;a@example.com;pw1;pop.example.com;pop3;;false;false;1;60000;");
+        string b = WriteCfg(dir, "garden.cfg", "null;b@example.com;pw2;imap.example.com;imap;rose;true;true;1;3600000;");
+
+        IReadOnlyList<LegacyImportOutcome> outcomes = LegacyCfgImporter.ImportFiles(new[] { a, b }, Array.Empty<AccountProfile>());
+
+        Assert.Equal(2, outcomes.Count);
+        Assert.All(outcomes, o => Assert.Null(o.SkippedBecause));
+        Assert.Equal("frames", outcomes[0].Item!.Profile.Name);
+        Assert.Equal("pw1", outcomes[0].Item!.Password);
+        Assert.Equal("garden", outcomes[1].Item!.Profile.Name);
+        Assert.Equal(AccountProfile.DefaultSaveFolder(), outcomes[1].Item!.Profile.SaveFolder);
+    }
+
+    [Fact]
+    public void ImportFiles_skips_names_that_already_exist_including_earlier_files_in_the_batch()
+    {
+        using var dir = new TempDir();
+        Directory.CreateDirectory(dir.File("one"));
+        Directory.CreateDirectory(dir.File("two"));
+        string first = WriteCfg(dir, "Frames.cfg", "C:\\P;a@example.com;pw;h;pop3;;false;false;1;60000;");
+        string sameNameInBatch = WriteCfg(dir, Path.Combine("two", "frames.cfg"), "C:\\P;a@example.com;pw;h;pop3;;false;false;1;60000;");
+        string alreadyThere = WriteCfg(dir, "garden.cfg", "C:\\P;a@example.com;pw;h;pop3;;false;false;1;60000;");
+
+        IReadOnlyList<LegacyImportOutcome> outcomes = LegacyCfgImporter.ImportFiles(
+            new[] { first, sameNameInBatch, alreadyThere }, new[] { new AccountProfile { Name = "GARDEN" } });
+
+        Assert.NotNull(outcomes[0].Item);
+        Assert.Null(outcomes[1].Item);
+        Assert.Contains("already exists", outcomes[1].SkippedBecause, StringComparison.Ordinal);
+        Assert.Null(outcomes[2].Item);
+        Assert.Contains("already exists", outcomes[2].SkippedBecause, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ImportFiles_reports_unreadable_files_and_carries_on()
+    {
+        using var dir = new TempDir();
+        string junk = dir.File("junk.cfg");
+        File.WriteAllText(junk, "this is not base64 !!!");
+        string good = WriteCfg(dir, "good.cfg", "C:\\P;a@example.com;pw;h;pop3;;false;false;1;60000;");
+        string missing = dir.File("missing.cfg");
+
+        IReadOnlyList<LegacyImportOutcome> outcomes = LegacyCfgImporter.ImportFiles(new[] { junk, missing, good }, Array.Empty<AccountProfile>());
+
+        Assert.Null(outcomes[0].Item);
+        Assert.Contains("not a valid old-format", outcomes[0].SkippedBecause, StringComparison.Ordinal);
+        Assert.Null(outcomes[1].Item);
+        Assert.NotNull(outcomes[1].SkippedBecause);
+        Assert.Equal("good", outcomes[2].Item!.Profile.Name);
+    }
 }
