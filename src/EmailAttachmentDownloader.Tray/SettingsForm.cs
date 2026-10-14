@@ -881,7 +881,7 @@ internal sealed class SettingsForm : Form
 
         AccountProfile profile = _working[_current];
         _status.Text = _scheduler.RequestRun(profile.Id)
-            ? $"Checking \"{profile.Name}\"... results appear as a notification and under Recent activity."
+            ? $"Checking \"{profile.Name}\"... progress and results are under Activity in the tray menu."
             : $"\"{profile.Name}\" is already being checked.";
     }
 

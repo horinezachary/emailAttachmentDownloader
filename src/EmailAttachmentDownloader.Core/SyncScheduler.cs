@@ -23,7 +23,13 @@ public sealed class SyncScheduler : IAsyncDisposable
         new UnboundedChannelOptions { SingleReader = true });
 
     private readonly HashSet<string> _pending = new(StringComparer.Ordinal);
+    private readonly List<string> _waiting = new();
     private readonly object _gate = new();
+
+    // What the worker is doing right now (guarded by _gate).
+    private string? _runningId;
+    private DateTimeOffset _runningSince;
+    private SyncProgress? _runningProgress;
 
     private CancellationTokenSource? _cts;
     private Task? _worker;
@@ -41,6 +47,51 @@ public sealed class SyncScheduler : IAsyncDisposable
         _history = history;
         _state = state;
         _log = logger ?? (ILogger)NullLogger.Instance;
+        _sync.Progress += OnProgress;
+    }
+
+    /// <summary>
+    /// Raised (on whichever thread caused it) when something is queued, starts, advances or finishes. UI code must marshal to
+    /// its own thread, then call <see cref="CurrentActivity"/>.
+    /// </summary>
+    public event EventHandler? ActivityChanged;
+
+    /// <summary>The account being checked (first) followed by those waiting, in order.</summary>
+    public IReadOnlyList<SyncActivity> CurrentActivity()
+    {
+        IReadOnlyList<AccountProfile> profiles = _profiles();
+        string NameOf(string id) => profiles.FirstOrDefault(p => p.Id == id)?.Name ?? id;
+
+        lock (_gate)
+        {
+            var list = new List<SyncActivity>();
+            if (_runningId is not null)
+            {
+                list.Add(new SyncActivity(_runningId, NameOf(_runningId), true, _runningProgress, _runningSince));
+            }
+
+            foreach (string id in _waiting)
+            {
+                list.Add(new SyncActivity(id, NameOf(id), false, null, null));
+            }
+
+            return list;
+        }
+    }
+
+    private void OnProgress(object? sender, SyncProgress progress)
+    {
+        lock (_gate)
+        {
+            if (_runningId != progress.AccountId)
+            {
+                return; // a run started outside the scheduler
+            }
+
+            _runningProgress = progress;
+        }
+
+        ActivityChanged?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>Raised on a worker thread after every run. UI code must marshal to its own thread.</summary>
@@ -73,9 +124,12 @@ public sealed class SyncScheduler : IAsyncDisposable
             {
                 return false;
             }
+
+            _waiting.Add(accountId);
         }
 
         _queue.Writer.TryWrite(accountId);
+        ActivityChanged?.Invoke(this, EventArgs.Empty);
         return true;
     }
 
@@ -136,6 +190,16 @@ public sealed class SyncScheduler : IAsyncDisposable
         {
             await foreach (string accountId in _queue.Reader.ReadAllAsync(ct).ConfigureAwait(false))
             {
+                lock (_gate)
+                {
+                    _waiting.Remove(accountId);
+                    _runningId = accountId;
+                    _runningSince = DateTimeOffset.Now;
+                    _runningProgress = null;
+                }
+
+                ActivityChanged?.Invoke(this, EventArgs.Empty);
+
                 try
                 {
                     AccountProfile? profile = _profiles().FirstOrDefault(p => p.Id == accountId);
@@ -160,7 +224,11 @@ public sealed class SyncScheduler : IAsyncDisposable
                     lock (_gate)
                     {
                         _pending.Remove(accountId);
+                        _runningId = null;
+                        _runningProgress = null;
                     }
+
+                    ActivityChanged?.Invoke(this, EventArgs.Empty);
                 }
             }
         }
@@ -198,6 +266,7 @@ public sealed class SyncScheduler : IAsyncDisposable
             }
         }
 
+        _sync.Progress -= OnProgress;
         cts.Dispose();
     }
 }
