@@ -11,10 +11,21 @@ public sealed class AccountSyncState
     public string FilterSignature { get; set; } = "";
 
     public uint ImapUidValidity { get; set; }
+
+    /// <summary>Every IMAP message up to this UID has been dealt with (or is in <see cref="ImapRetry"/>).</summary>
     public uint ImapLastUid { get; set; }
+
+    /// <summary>
+    /// IMAP messages at or below the cursor that could not be downloaded or saved, with how many times they have failed.
+    /// They are tried again on later runs without re-reading the rest of the mailbox.
+    /// </summary>
+    public Dictionary<uint, int> ImapRetry { get; set; } = new();
 
     /// <summary>POP3 UIDLs already handled and still on the server.</summary>
     public List<string> Pop3SeenUids { get; set; } = new();
+
+    /// <summary>POP3 messages that failed, with how many times (they are not in <see cref="Pop3SeenUids"/> until they succeed).</summary>
+    public Dictionary<string, int> Pop3Retry { get; set; } = new();
 
     public DateTimeOffset? LastRunAt { get; set; }
 
@@ -22,7 +33,41 @@ public sealed class AccountSyncState
     {
         var copy = (AccountSyncState)MemberwiseClone();
         copy.Pop3SeenUids = new List<string>(Pop3SeenUids);
+        copy.ImapRetry = new Dictionary<uint, int>(ImapRetry);
+        copy.Pop3Retry = new Dictionary<string, int>(Pop3Retry);
         return copy;
+    }
+}
+
+/// <summary>
+/// Decides when to stop retrying one message. Without a limit, a single message that can never be downloaded would be
+/// retried forever; with the per-message list it costs one download attempt per run instead of a rescan of the mailbox.
+/// </summary>
+internal static class RetryPolicy
+{
+    public const int MaxAttempts = 5;
+
+    /// <summary>
+    /// Notes that <paramref name="key"/> failed. A failure that is the machine's fault (the picture folder is not writable, the
+    /// disk is full) does not use up one of the <see cref="MaxAttempts"/>, so nothing is lost while that is being fixed.
+    /// </summary>
+    /// <returns>True when the message has now failed too often and should be given up on (it is removed from the list).</returns>
+    public static bool NoteFailure<TKey>(Dictionary<TKey, int> retry, TKey key, bool countsAsAttempt) where TKey : notnull
+    {
+        retry.TryGetValue(key, out int attempts);
+        if (countsAsAttempt)
+        {
+            attempts++;
+        }
+
+        if (attempts >= MaxAttempts)
+        {
+            retry.Remove(key);
+            return true;
+        }
+
+        retry[key] = attempts;
+        return false;
     }
 }
 
@@ -118,6 +163,25 @@ public sealed class SyncStateStore
         lock (_gate)
         {
             _accounts[accountId] = state.Clone();
+            Write();
+        }
+    }
+
+    /// <summary>
+    /// Notes that a run was attempted, keeping everything else. Used when a run fails before it can touch the mailbox, so the
+    /// schedule waits its interval instead of trying again at the next 30-second tick.
+    /// </summary>
+    public void RecordRun(string accountId, DateTimeOffset startedAt)
+    {
+        lock (_gate)
+        {
+            if (!_accounts.TryGetValue(accountId, out AccountSyncState? state))
+            {
+                state = new AccountSyncState();
+                _accounts[accountId] = state;
+            }
+
+            state.LastRunAt = startedAt;
             Write();
         }
     }

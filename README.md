@@ -207,6 +207,24 @@ application" client will not work, because it needs exact redirect addresses.)
   of a big mailbox, with a count), then checking each new e-mail and downloading the ones that match. Accounts
   queued behind it are listed as waiting. The bar animates instead of filling while the total is not known yet.
 
+### What a check looks at
+
+Each check only looks at mail it has not dealt with before. IMAP remembers the highest message number it has
+processed and asks the server only for newer ones; POP3 remembers which messages it has handled. The first check
+of a big mailbox reads everything once, and the position is saved every few seconds, so an interrupted first check
+carries on where it stopped instead of starting over.
+
+- A message that fails (for example it cannot be downloaded) is kept in a short retry list and tried again on
+  later checks, up to 5 failed attempts, and does not make the app re-read the rest of the mailbox. Failures caused
+  by the picture folder (not writable, disk full) are retried without using up attempts.
+- Changing a setting that decides which mail qualifies (server, user, keywords, recipient filter, attachment types,
+  minimum size) makes the next check read the mailbox again from the start, because mail skipped earlier may match
+  now. Pictures already saved are recognised by content and not saved twice.
+- The log (`%APPDATA%\EmailAttachmentDownloader\logs\app.log`) says at the start of every check how many new
+  messages it found and from which position, which shows at a glance whether the position is being kept.
+- A check that fails before it reaches the mailbox (not signed in, no password, invalid settings) counts as a
+  try for the schedule, so it is repeated after the account's interval, not every 30 seconds.
+
 ### Recipient filter
 
 In Settings, tick **Only mail sent to** and list full addresses separated by commas. An e-mail must

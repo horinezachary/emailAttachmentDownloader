@@ -142,6 +142,8 @@ public sealed class MailSyncService
         IReadOnlyList<string> problems = profile.Validate(_builtInClient);
         if (problems.Count > 0)
         {
+            // Count it as an attempt, or a scheduled account with a bad setting would be re-run every 30 seconds.
+            _state.RecordRun(profile.Id, started);
             return Finish(string.Join(" ", problems));
         }
 
@@ -199,10 +201,18 @@ public sealed class MailSyncService
         finally
         {
             _library.Flush();
-            if (!cancelled && state is not null)
+            if (!cancelled)
             {
-                state.LastRunAt = started;
-                _state.Put(profile.Id, state);
+                if (state is not null)
+                {
+                    state.LastRunAt = started;
+                    _state.Put(profile.Id, state);
+                }
+                else
+                {
+                    // Failed before the mailbox was reached (sign-in, password): still wait the interval before trying again.
+                    _state.RecordRun(profile.Id, started);
+                }
             }
         }
 
@@ -266,10 +276,12 @@ public sealed class MailSyncService
         {
             state.ImapUidValidity = inbox.UidValidity;
             state.ImapLastUid = 0;
+            state.ImapRetry.Clear();
         }
 
         uint lastUid = state.ImapLastUid;
         uint maxSeen = lastUid;
+        const MessageSummaryItems Items = MessageSummaryItems.UniqueId | MessageSummaryItems.Envelope;
 
         // Fetch only subjects of mail newer than the cursor. Matching is done here, not with a server
         // SEARCH, so every provider behaves the same (Gmail's SUBJECT search matches whole words only).
@@ -283,12 +295,25 @@ public sealed class MailSyncService
 
         var range = new UniqueIdRange(new UniqueId(lastUid + 1), UniqueId.MaxValue);
         IList<IMessageSummary> summaries;
+        List<IMessageSummary> retries = new();
         inbox.MessageSummaryFetched += OnSummaryFetched;
         try
         {
-            summaries = await inbox
-                .FetchAsync(range, MessageSummaryItems.UniqueId | MessageSummaryItems.Envelope, ct)
-                .ConfigureAwait(false);
+            summaries = await inbox.FetchAsync(range, Items, ct).ConfigureAwait(false);
+
+            // Messages that failed on an earlier run sit below the cursor, so nothing else would look at them again.
+            if (state.ImapRetry.Count > 0)
+            {
+                var ids = state.ImapRetry.Keys.OrderBy(id => id).Select(id => new UniqueId(id)).ToList();
+                IList<IMessageSummary> found = await inbox.FetchAsync(ids, Items, ct).ConfigureAwait(false);
+                retries = found.OrderBy(s => s.UniqueId.Id).ToList();
+
+                // Gone from the server (deleted), so there is nothing left to retry.
+                foreach (uint gone in state.ImapRetry.Keys.Where(id => retries.All(s => s.UniqueId.Id != id)).ToList())
+                {
+                    state.ImapRetry.Remove(gone);
+                }
+            }
         }
         finally
         {
@@ -297,35 +322,83 @@ public sealed class MailSyncService
 
         // "N:*" always returns the newest message even when it is older than N, so filter explicitly.
         List<IMessageSummary> fresh = summaries.Where(s => s.UniqueId.Id > lastUid).OrderBy(s => s.UniqueId.Id).ToList();
-        foreach (IMessageSummary summary in fresh)
+        int total = retries.Count + fresh.Count;
+        _log.LogInformation(
+            "{Account}: {New} new message(s) after UID {Cursor}, {Retry} earlier failure(s) to retry.",
+            profile.Name, fresh.Count, lastUid, retries.Count);
+
+        async Task HandleAsync(IMessageSummary summary)
         {
-            ct.ThrowIfCancellationRequested();
+            uint uid = summary.UniqueId.Id;
             counts.Checked++;
-            tracker.Tick(SyncPhase.Checking, counts.Checked, fresh.Count);
-            maxSeen = Math.Max(maxSeen, summary.UniqueId.Id);
+            tracker.Tick(SyncPhase.Checking, counts.Checked, total);
 
-            if (!Keywords.IsMatch(summary.Envelope?.Subject, profile.Keywords, profile.KeywordMode))
+            // The envelope already carries To and Cc, so recipients need no extra download.
+            if (!Keywords.IsMatch(summary.Envelope?.Subject, profile.Keywords, profile.KeywordMode)
+                || !Recipients.Accepts(profile, Recipients.From(summary.Envelope?.To, summary.Envelope?.Cc)))
             {
-                continue;
-            }
-
-            // The envelope already carries To and Cc, so this needs no extra download.
-            if (!Recipients.Accepts(profile, Recipients.From(summary.Envelope?.To, summary.Envelope?.Cc)))
-            {
-                continue;
+                state.ImapRetry.Remove(uid);
+                return;
             }
 
             counts.Matched++;
-            tracker.Tick(SyncPhase.Downloading, counts.Checked, fresh.Count);
+            tracker.Tick(SyncPhase.Downloading, counts.Checked, total);
             try
             {
                 MimeMessage message = await inbox.GetMessageAsync(summary.UniqueId, ct).ConfigureAwait(false);
-                Record(profile, _saver.SaveFrom(profile, message), counts);
+                SaveOutcome outcome = _saver.SaveFrom(profile, message);
+                Record(profile, outcome, counts);
+
+                if (outcome.Failures > 0)
+                {
+                    // Could not write to the picture folder: keep it for next time, without using up an attempt.
+                    RetryPolicy.NoteFailure(state.ImapRetry, uid, countsAsAttempt: false);
+                }
+                else
+                {
+                    state.ImapRetry.Remove(uid);
+                }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
+                if (!client.IsConnected)
+                {
+                    throw; // the connection dropped: stop here and carry on from the last checkpoint next time
+                }
+
                 counts.Failures++;
-                _log.LogError(ex, "Could not download message {Uid} for {Account}", summary.UniqueId, profile.Name);
+                if (RetryPolicy.NoteFailure(state.ImapRetry, uid, countsAsAttempt: true))
+                {
+                    _log.LogError(ex, "Giving up on message {Uid} for {Account} after repeated failures", uid, profile.Name);
+                }
+                else
+                {
+                    _log.LogError(ex, "Could not download message {Uid} for {Account}; it will be tried again", uid, profile.Name);
+                }
+            }
+        }
+
+        foreach (IMessageSummary summary in retries)
+        {
+            ct.ThrowIfCancellationRequested();
+            await HandleAsync(summary).ConfigureAwait(false);
+        }
+
+        // Save the position now and then, so a big first run that is interrupted resumes instead of starting over.
+        var sinceCheckpoint = Stopwatch.StartNew();
+        int handledSinceCheckpoint = 0;
+        foreach (IMessageSummary summary in fresh)
+        {
+            ct.ThrowIfCancellationRequested();
+            await HandleAsync(summary).ConfigureAwait(false);
+            maxSeen = Math.Max(maxSeen, summary.UniqueId.Id);
+
+            if (++handledSinceCheckpoint >= 100 || sinceCheckpoint.Elapsed >= TimeSpan.FromSeconds(5))
+            {
+                state.ImapLastUid = maxSeen;
+                _state.Put(profile.Id, state);
+                handledSinceCheckpoint = 0;
+                sinceCheckpoint.Restart();
             }
         }
 
@@ -334,11 +407,8 @@ public sealed class MailSyncService
             maxSeen = Math.Max(maxSeen, next.Id - 1);
         }
 
-        // Only move the cursor when everything succeeded; hashes make a retry harmless.
-        if (counts.Failures == 0)
-        {
-            state.ImapLastUid = maxSeen;
-        }
+        // Always move the cursor: a message that failed is in the retry list, not a reason to re-read everything after it.
+        state.ImapLastUid = maxSeen;
 
         await client.DisconnectAsync(true, ct).ConfigureAwait(false);
     }
@@ -357,6 +427,12 @@ public sealed class MailSyncService
         var seen = new HashSet<string>(state.Pop3SeenUids, StringComparer.Ordinal);
         var onServer = new HashSet<string>(uids, StringComparer.Ordinal);
         int toCheck = uids.Count(u => !seen.Contains(u));
+        _log.LogInformation(
+            "{Account}: {New} message(s) not seen before, {Retry} earlier failure(s) among them.",
+            profile.Name, toCheck, state.Pop3Retry.Count(r => onServer.Contains(r.Key)));
+
+        var sinceCheckpoint = Stopwatch.StartNew();
+        int handledSinceCheckpoint = 0;
 
         for (int index = 0; index < uids.Count; index++)
         {
@@ -371,6 +447,7 @@ public sealed class MailSyncService
             counts.Checked++;
             tracker.Tick(SyncPhase.Checking, counts.Checked, toCheck);
             bool handled = true;
+            bool countsAsAttempt = false;
             try
             {
                 MimeMessage? message = null;
@@ -395,24 +472,53 @@ public sealed class MailSyncService
                     counts.Matched++;
                     tracker.Tick(SyncPhase.Downloading, counts.Checked, toCheck);
                     message ??= await client.GetMessageAsync(index, ct).ConfigureAwait(false);
-                    Record(profile, _saver.SaveFrom(profile, message), counts);
+                    SaveOutcome outcome = _saver.SaveFrom(profile, message);
+                    Record(profile, outcome, counts);
+
+                    // Could not write to the picture folder: try this one again next time, without using up an attempt.
+                    handled = outcome.Failures == 0;
                 }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
+                if (!client.IsConnected)
+                {
+                    throw; // the connection dropped: stop here and carry on from the last checkpoint next time
+                }
+
                 handled = false;
+                countsAsAttempt = true;
                 counts.Failures++;
                 _log.LogError(ex, "Could not process POP3 message {Uid} for {Account}", uid, profile.Name);
+            }
+
+            if (!handled && RetryPolicy.NoteFailure(state.Pop3Retry, uid, countsAsAttempt))
+            {
+                _log.LogError("Giving up on POP3 message {Uid} for {Account} after repeated failures", uid, profile.Name);
+                handled = true;
             }
 
             if (handled)
             {
                 seen.Add(uid);
+                state.Pop3Retry.Remove(uid);
+            }
+
+            if (++handledSinceCheckpoint >= 100 || sinceCheckpoint.Elapsed >= TimeSpan.FromSeconds(5))
+            {
+                state.Pop3SeenUids = seen.ToList();
+                _state.Put(profile.Id, state);
+                handledSinceCheckpoint = 0;
+                sinceCheckpoint.Restart();
             }
         }
 
-        // Forget UIDLs that have left the server so the list cannot grow forever.
+        // Forget UIDLs that have left the server so the lists cannot grow forever.
         state.Pop3SeenUids = seen.Where(onServer.Contains).ToList();
+        foreach (string gone in state.Pop3Retry.Keys.Where(k => !onServer.Contains(k)).ToList())
+        {
+            state.Pop3Retry.Remove(gone);
+        }
 
         await client.DisconnectAsync(true, ct).ConfigureAwait(false);
     }
