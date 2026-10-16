@@ -217,6 +217,8 @@ carries on where it stopped instead of starting over.
 - A message that fails (for example it cannot be downloaded) is kept in a short retry list and tried again on
   later checks, up to 5 failed attempts, and does not make the app re-read the rest of the mailbox. Failures caused
   by the picture folder (not writable, disk full) are retried without using up attempts.
+- If the server drops the connection part-way (a timeout, a reset, a message it cannot cope with), the app counts an
+  attempt against that message, reconnects (up to 3 times per check) and carries on with the next one.
 - Changing a setting that decides which mail qualifies (server, user, keywords, recipient filter, attachment types,
   minimum size) makes the next check read the mailbox again from the start, because mail skipped earlier may match
   now. Pictures already saved are recognised by content and not saved twice.
