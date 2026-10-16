@@ -191,3 +191,142 @@ public class SyncActivityTests
         }
     }
 }
+
+public class RetryPolicyTests
+{
+    [Fact]
+    public void A_message_is_given_up_on_after_the_fifth_failed_attempt()
+    {
+        var retry = new Dictionary<uint, int>();
+
+        for (int attempt = 1; attempt < RetryPolicy.MaxAttempts; attempt++)
+        {
+            Assert.False(RetryPolicy.NoteFailure(retry, 7u, countsAsAttempt: true));
+            Assert.Equal(attempt, retry[7u]);
+        }
+
+        Assert.True(RetryPolicy.NoteFailure(retry, 7u, countsAsAttempt: true));
+        Assert.DoesNotContain(7u, retry.Keys);
+    }
+
+    [Fact]
+    public void A_failure_that_is_the_machines_fault_never_uses_up_attempts()
+    {
+        var retry = new Dictionary<string, int>();
+
+        for (int i = 0; i < 50; i++)
+        {
+            Assert.False(RetryPolicy.NoteFailure(retry, "uid-1", countsAsAttempt: false));
+        }
+
+        Assert.Equal(0, retry["uid-1"]);
+    }
+
+    [Fact]
+    public void Messages_are_counted_separately()
+    {
+        var retry = new Dictionary<string, int>();
+
+        RetryPolicy.NoteFailure(retry, "a", true);
+        RetryPolicy.NoteFailure(retry, "a", true);
+        RetryPolicy.NoteFailure(retry, "b", true);
+
+        Assert.Equal(2, retry["a"]);
+        Assert.Equal(1, retry["b"]);
+    }
+}
+
+public class SyncStateRetryTests
+{
+    [Fact]
+    public void Retry_lists_survive_saving_and_loading_and_clones_are_independent()
+    {
+        using var dir = new TempDir();
+        var store = new SyncStateStore(dir.File("state.json"));
+        var state = new AccountSyncState { ImapLastUid = 500 };
+        state.ImapRetry[12] = 2;
+        state.Pop3Retry["uid-x"] = 3;
+        store.Put("a", state);
+
+        AccountSyncState back = new SyncStateStore(dir.File("state.json")).Snapshot("a");
+
+        Assert.Equal(500u, back.ImapLastUid);
+        Assert.Equal(2, back.ImapRetry[12]);
+        Assert.Equal(3, back.Pop3Retry["uid-x"]);
+
+        back.ImapRetry.Clear();
+        Assert.Equal(2, store.Snapshot("a").ImapRetry[12]);
+    }
+
+    [Fact]
+    public void A_state_file_from_before_retries_still_loads()
+    {
+        using var dir = new TempDir();
+        File.WriteAllText(
+            dir.File("state.json"),
+            "{\"version\":1,\"accounts\":{\"a\":{\"filterSignature\":\"s\",\"imapUidValidity\":9,\"imapLastUid\":42,\"pop3SeenUids\":[\"u\"]}}}");
+
+        AccountSyncState state = new SyncStateStore(dir.File("state.json")).Snapshot("a");
+
+        Assert.Equal(42u, state.ImapLastUid);
+        Assert.Empty(state.ImapRetry);
+        Assert.Empty(state.Pop3Retry);
+    }
+
+    [Fact]
+    public void RecordRun_sets_the_time_and_keeps_the_cursor()
+    {
+        using var dir = new TempDir();
+        var store = new SyncStateStore(dir.File("state.json"));
+        store.Put("a", new AccountSyncState { ImapLastUid = 77, FilterSignature = "sig" });
+        var when = new DateTimeOffset(2026, 3, 4, 5, 6, 7, TimeSpan.Zero);
+
+        store.RecordRun("a", when);
+        store.RecordRun("never-seen-before", when);
+
+        Assert.Equal(when, store.LastRunAt("a"));
+        Assert.Equal(77u, store.Snapshot("a").ImapLastUid);
+        Assert.Equal("sig", store.Snapshot("a").FilterSignature);
+        Assert.Equal(when, new SyncStateStore(dir.File("state.json")).LastRunAt("never-seen-before"));
+    }
+}
+
+public class RunRecordingTests
+{
+    private static (MailSyncService Service, SyncStateStore State) Create(TempDir dir)
+    {
+        var state = new SyncStateStore(dir.File("state.json"));
+        var service = new MailSyncService(new ImageLibrary(dir.File("library.json")), state, new MemoryCredentialStore(), dir.File("sync.lock"));
+        return (service, state);
+    }
+
+    [Fact]
+    public async Task A_run_that_fails_before_reaching_the_mailbox_still_counts_as_an_attempt()
+    {
+        using var dir = new TempDir();
+        (MailSyncService service, SyncStateStore state) = Create(dir);
+        var account = new AccountProfile
+        {
+            Id = "a", Name = "Alpha", UserName = "me@example.com", Host = "imap.example.com", SaveFolder = dir.File("pics"),
+        };
+
+        RunResult result = await service.RunAsync(account); // no password stored
+
+        Assert.False(result.Succeeded);
+        Assert.NotNull(state.LastRunAt("a"));
+        Assert.False(SyncScheduler.IsDue(new AccountProfile { Scheduled = true, IntervalMinutes = 60 }, state.LastRunAt("a"), DateTimeOffset.Now));
+    }
+
+    [Fact]
+    public async Task An_account_with_an_invalid_setting_is_not_retried_every_tick()
+    {
+        using var dir = new TempDir();
+        (MailSyncService service, SyncStateStore state) = Create(dir);
+        var account = new AccountProfile { Id = "bad", Name = "Bad", Host = "", UserName = "", SaveFolder = dir.File("pics") };
+
+        RunResult result = await service.RunAsync(account);
+
+        Assert.False(result.Succeeded);
+        Assert.NotNull(state.LastRunAt("bad"));
+    }
+}

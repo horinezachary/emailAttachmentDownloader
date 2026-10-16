@@ -142,6 +142,8 @@ public sealed class MailSyncService
         IReadOnlyList<string> problems = profile.Validate(_builtInClient);
         if (problems.Count > 0)
         {
+            // Count it as an attempt, or a scheduled account with a bad setting would be re-run every 30 seconds.
+            _state.RecordRun(profile.Id, started);
             return Finish(string.Join(" ", problems));
         }
 
@@ -199,10 +201,18 @@ public sealed class MailSyncService
         finally
         {
             _library.Flush();
-            if (!cancelled && state is not null)
+            if (!cancelled)
             {
-                state.LastRunAt = started;
-                _state.Put(profile.Id, state);
+                if (state is not null)
+                {
+                    state.LastRunAt = started;
+                    _state.Put(profile.Id, state);
+                }
+                else
+                {
+                    // Failed before the mailbox was reached (sign-in, password): still wait the interval before trying again.
+                    _state.RecordRun(profile.Id, started);
+                }
             }
         }
 
@@ -251,170 +261,374 @@ public sealed class MailSyncService
         }
     }
 
+    /// <summary>How many times one run may reconnect after the server drops the connection.</summary>
+    private const int MaxReconnects = 3;
+
     private async Task RunImapAsync(
         AccountProfile profile, MailAuth auth, AccountSyncState state, RunCounts counts, ProgressTracker tracker, CancellationToken ct)
     {
-        using var client = new ImapClient { Timeout = TimeoutMilliseconds };
-        tracker.Phase(SyncPhase.Connecting);
-        await ConnectAsync(client, profile, auth, ct).ConfigureAwait(false);
+        var clients = new List<ImapClient>();
+        ImapClient client = null!;
+        IMailFolder inbox = null!;
+        int reconnects = 0;
+        uint maxSeen = state.ImapLastUid;
 
-        IMailFolder inbox = client.Inbox;
-        await inbox.OpenAsync(FolderAccess.ReadOnly, ct).ConfigureAwait(false);
-
-        // UIDs are only meaningful within one UIDVALIDITY epoch; a new epoch means start over.
-        if (state.ImapUidValidity != inbox.UidValidity)
+        async Task OpenAsync()
         {
-            state.ImapUidValidity = inbox.UidValidity;
-            state.ImapLastUid = 0;
+            client = new ImapClient { Timeout = TimeoutMilliseconds };
+            clients.Add(client);
+            await ConnectAsync(client, profile, auth, ct).ConfigureAwait(false);
+            inbox = client.Inbox;
+            await inbox.OpenAsync(FolderAccess.ReadOnly, ct).ConfigureAwait(false);
         }
 
-        uint lastUid = state.ImapLastUid;
-        uint maxSeen = lastUid;
-
-        // Fetch only subjects of mail newer than the cursor. Matching is done here, not with a server
-        // SEARCH, so every provider behaves the same (Gmail's SUBJECT search matches whole words only).
-        // On a first run the whole mailbox is read, so its size is the total; later runs only read what is new.
-        int listingTotal = lastUid == 0 ? inbox.Count : 0;
-        int read = 0;
-        tracker.Phase(SyncPhase.Listing, 0, listingTotal);
-
-        void OnSummaryFetched(object? sender, MessageSummaryFetchedEventArgs e) =>
-            tracker.Tick(SyncPhase.Listing, Interlocked.Increment(ref read), listingTotal);
-
-        var range = new UniqueIdRange(new UniqueId(lastUid + 1), UniqueId.MaxValue);
-        IList<IMessageSummary> summaries;
-        inbox.MessageSummaryFetched += OnSummaryFetched;
         try
         {
-            summaries = await inbox
-                .FetchAsync(range, MessageSummaryItems.UniqueId | MessageSummaryItems.Envelope, ct)
-                .ConfigureAwait(false);
+            tracker.Phase(SyncPhase.Connecting);
+            await OpenAsync().ConfigureAwait(false);
+
+            // UIDs are only meaningful within one UIDVALIDITY epoch; a new epoch means start over.
+            if (state.ImapUidValidity != inbox.UidValidity)
+            {
+                state.ImapUidValidity = inbox.UidValidity;
+                state.ImapLastUid = 0;
+                state.ImapRetry.Clear();
+            }
+
+            uint lastUid = state.ImapLastUid;
+            maxSeen = lastUid;
+            const MessageSummaryItems Items = MessageSummaryItems.UniqueId | MessageSummaryItems.Envelope;
+
+            // Fetch only subjects of mail newer than the cursor. Matching is done here, not with a server
+            // SEARCH, so every provider behaves the same (Gmail's SUBJECT search matches whole words only).
+            // On a first run the whole mailbox is read, so its size is the total; later runs only read what is new.
+            int listingTotal = lastUid == 0 ? inbox.Count : 0;
+            int read = 0;
+            tracker.Phase(SyncPhase.Listing, 0, listingTotal);
+
+            void OnSummaryFetched(object? sender, MessageSummaryFetchedEventArgs e) =>
+                tracker.Tick(SyncPhase.Listing, Interlocked.Increment(ref read), listingTotal);
+
+            var range = new UniqueIdRange(new UniqueId(lastUid + 1), UniqueId.MaxValue);
+            IList<IMessageSummary> summaries;
+            List<IMessageSummary> retries = new();
+            inbox.MessageSummaryFetched += OnSummaryFetched;
+            try
+            {
+                summaries = await inbox.FetchAsync(range, Items, ct).ConfigureAwait(false);
+
+                // Messages that failed on an earlier run sit below the cursor, so nothing else would look at them again.
+                if (state.ImapRetry.Count > 0)
+                {
+                    var ids = state.ImapRetry.Keys.OrderBy(id => id).Select(id => new UniqueId(id)).ToList();
+                    IList<IMessageSummary> found = await inbox.FetchAsync(ids, Items, ct).ConfigureAwait(false);
+                    retries = found.OrderBy(s => s.UniqueId.Id).ToList();
+
+                    // Gone from the server (deleted), so there is nothing left to retry.
+                    foreach (uint gone in state.ImapRetry.Keys.Where(id => retries.All(s => s.UniqueId.Id != id)).ToList())
+                    {
+                        state.ImapRetry.Remove(gone);
+                    }
+                }
+            }
+            finally
+            {
+                inbox.MessageSummaryFetched -= OnSummaryFetched;
+            }
+
+            // "N:*" always returns the newest message even when it is older than N, so filter explicitly.
+            List<IMessageSummary> fresh = summaries.Where(s => s.UniqueId.Id > lastUid).OrderBy(s => s.UniqueId.Id).ToList();
+            int total = retries.Count + fresh.Count;
+            _log.LogInformation(
+                "{Account}: {New} new message(s) after UID {Cursor}, {Retry} earlier failure(s) to retry.",
+                profile.Name, fresh.Count, lastUid, retries.Count);
+
+            // The server dropped us (a timeout, a reset, or a message it chokes on). Reconnect and carry on with the
+            // next message rather than failing every message that is left or starting the whole check over.
+            async Task ReconnectAsync(Exception cause)
+            {
+                if (++reconnects > MaxReconnects)
+                {
+                    throw new InvalidOperationException("The connection to the server keeps dropping.", cause);
+                }
+
+                _log.LogWarning(cause, "{Account}: connection lost; reconnecting ({Attempt} of {Max})", profile.Name, reconnects, MaxReconnects);
+                await OpenAsync().ConfigureAwait(false);
+                if (inbox.UidValidity != state.ImapUidValidity)
+                {
+                    throw new InvalidOperationException("The mailbox was reset while it was being checked; it will be rescanned on the next check.", cause);
+                }
+            }
+
+            async Task HandleAsync(IMessageSummary summary)
+            {
+                uint uid = summary.UniqueId.Id;
+                counts.Checked++;
+                tracker.Tick(SyncPhase.Checking, counts.Checked, total);
+
+                // The envelope already carries To and Cc, so recipients need no extra download.
+                if (!Keywords.IsMatch(summary.Envelope?.Subject, profile.Keywords, profile.KeywordMode)
+                    || !Recipients.Accepts(profile, Recipients.From(summary.Envelope?.To, summary.Envelope?.Cc)))
+                {
+                    state.ImapRetry.Remove(uid);
+                    return;
+                }
+
+                counts.Matched++;
+                tracker.Tick(SyncPhase.Downloading, counts.Checked, total);
+                try
+                {
+                    MimeMessage message = await inbox.GetMessageAsync(summary.UniqueId, ct).ConfigureAwait(false);
+                    SaveOutcome outcome = _saver.SaveFrom(profile, message);
+                    Record(profile, outcome, counts);
+
+                    if (outcome.Failures > 0)
+                    {
+                        // Could not write to the picture folder: keep it for next time, without using up an attempt.
+                        RetryPolicy.NoteFailure(state.ImapRetry, uid, countsAsAttempt: false);
+                    }
+                    else
+                    {
+                        state.ImapRetry.Remove(uid);
+                    }
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // A message that drops the connection counts as an attempt too, or it would be retried for ever.
+                    bool dropped = !client.IsConnected;
+                    counts.Failures++;
+                    if (RetryPolicy.NoteFailure(state.ImapRetry, uid, countsAsAttempt: true))
+                    {
+                        _log.LogError(ex, "Giving up on message {Uid} for {Account} after repeated failures", uid, profile.Name);
+                    }
+                    else
+                    {
+                        _log.LogError(ex, "Could not download message {Uid} for {Account}; it will be tried again", uid, profile.Name);
+                    }
+
+                    if (dropped)
+                    {
+                        await ReconnectAsync(ex).ConfigureAwait(false);
+                    }
+                }
+            }
+
+            foreach (IMessageSummary summary in retries)
+            {
+                ct.ThrowIfCancellationRequested();
+                await HandleAsync(summary).ConfigureAwait(false);
+            }
+
+            // Save the position now and then, so a big first run that is interrupted resumes instead of starting over.
+            var sinceCheckpoint = Stopwatch.StartNew();
+            int handledSinceCheckpoint = 0;
+            foreach (IMessageSummary summary in fresh)
+            {
+                ct.ThrowIfCancellationRequested();
+                await HandleAsync(summary).ConfigureAwait(false);
+                maxSeen = Math.Max(maxSeen, summary.UniqueId.Id);
+
+                if (++handledSinceCheckpoint >= 100 || sinceCheckpoint.Elapsed >= TimeSpan.FromSeconds(5))
+                {
+                    state.ImapLastUid = maxSeen;
+                    _state.Put(profile.Id, state);
+                    handledSinceCheckpoint = 0;
+                    sinceCheckpoint.Restart();
+                }
+            }
+
+            if (inbox.UidNext is { } next && next.Id > 0)
+            {
+                maxSeen = Math.Max(maxSeen, next.Id - 1);
+            }
+
+            if (client.IsConnected)
+            {
+                await client.DisconnectAsync(true, ct).ConfigureAwait(false);
+            }
         }
         finally
         {
-            inbox.MessageSummaryFetched -= OnSummaryFetched;
-        }
-
-        // "N:*" always returns the newest message even when it is older than N, so filter explicitly.
-        List<IMessageSummary> fresh = summaries.Where(s => s.UniqueId.Id > lastUid).OrderBy(s => s.UniqueId.Id).ToList();
-        foreach (IMessageSummary summary in fresh)
-        {
-            ct.ThrowIfCancellationRequested();
-            counts.Checked++;
-            tracker.Tick(SyncPhase.Checking, counts.Checked, fresh.Count);
-            maxSeen = Math.Max(maxSeen, summary.UniqueId.Id);
-
-            if (!Keywords.IsMatch(summary.Envelope?.Subject, profile.Keywords, profile.KeywordMode))
+            // Always move the cursor, even when the run ends early: a message that failed is in the retry list,
+            // not a reason to read everything after it again.
+            if (maxSeen > state.ImapLastUid)
             {
-                continue;
+                state.ImapLastUid = maxSeen;
             }
 
-            // The envelope already carries To and Cc, so this needs no extra download.
-            if (!Recipients.Accepts(profile, Recipients.From(summary.Envelope?.To, summary.Envelope?.Cc)))
+            foreach (ImapClient c in clients)
             {
-                continue;
-            }
-
-            counts.Matched++;
-            tracker.Tick(SyncPhase.Downloading, counts.Checked, fresh.Count);
-            try
-            {
-                MimeMessage message = await inbox.GetMessageAsync(summary.UniqueId, ct).ConfigureAwait(false);
-                Record(profile, _saver.SaveFrom(profile, message), counts);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                counts.Failures++;
-                _log.LogError(ex, "Could not download message {Uid} for {Account}", summary.UniqueId, profile.Name);
+                c.Dispose();
             }
         }
-
-        if (inbox.UidNext is { } next && next.Id > 0)
-        {
-            maxSeen = Math.Max(maxSeen, next.Id - 1);
-        }
-
-        // Only move the cursor when everything succeeded; hashes make a retry harmless.
-        if (counts.Failures == 0)
-        {
-            state.ImapLastUid = maxSeen;
-        }
-
-        await client.DisconnectAsync(true, ct).ConfigureAwait(false);
     }
 
     private async Task RunPop3Async(
         AccountProfile profile, MailAuth auth, AccountSyncState state, RunCounts counts, ProgressTracker tracker, CancellationToken ct)
     {
-        using var client = new Pop3Client { Timeout = TimeoutMilliseconds };
-        tracker.Phase(SyncPhase.Connecting);
-        await ConnectAsync(client, profile, auth, ct).ConfigureAwait(false);
-
-        tracker.Phase(SyncPhase.Listing);
-        IList<string> uids = await client.GetMessageUidsAsync(ct).ConfigureAwait(false);
-        bool canReadHeadersOnly = client.Capabilities.HasFlag(Pop3Capabilities.Top);
-
+        var clients = new List<Pop3Client>();
+        Pop3Client client = null!;
+        int reconnects = 0;
         var seen = new HashSet<string>(state.Pop3SeenUids, StringComparer.Ordinal);
-        var onServer = new HashSet<string>(uids, StringComparer.Ordinal);
-        int toCheck = uids.Count(u => !seen.Contains(u));
+        bool completed = false;
 
-        for (int index = 0; index < uids.Count; index++)
+        async Task OpenAsync()
         {
-            ct.ThrowIfCancellationRequested();
-
-            string uid = uids[index];
-            if (seen.Contains(uid))
-            {
-                continue;
-            }
-
-            counts.Checked++;
-            tracker.Tick(SyncPhase.Checking, counts.Checked, toCheck);
-            bool handled = true;
-            try
-            {
-                MimeMessage? message = null;
-                string? subject;
-                List<string> recipients;
-                if (canReadHeadersOnly)
-                {
-                    HeaderList headers = await client.GetMessageHeadersAsync(index, ct).ConfigureAwait(false);
-                    subject = headers[HeaderId.Subject];
-                    recipients = Recipients.FromHeaders(headers[HeaderId.To], headers[HeaderId.Cc]);
-                }
-                else
-                {
-                    message = await client.GetMessageAsync(index, ct).ConfigureAwait(false);
-                    subject = message.Subject;
-                    recipients = Recipients.From(message.To, message.Cc);
-                }
-
-                if (Keywords.IsMatch(subject, profile.Keywords, profile.KeywordMode)
-                    && Recipients.Accepts(profile, recipients))
-                {
-                    counts.Matched++;
-                    tracker.Tick(SyncPhase.Downloading, counts.Checked, toCheck);
-                    message ??= await client.GetMessageAsync(index, ct).ConfigureAwait(false);
-                    Record(profile, _saver.SaveFrom(profile, message), counts);
-                }
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                handled = false;
-                counts.Failures++;
-                _log.LogError(ex, "Could not process POP3 message {Uid} for {Account}", uid, profile.Name);
-            }
-
-            if (handled)
-            {
-                seen.Add(uid);
-            }
+            client = new Pop3Client { Timeout = TimeoutMilliseconds };
+            clients.Add(client);
+            await ConnectAsync(client, profile, auth, ct).ConfigureAwait(false);
         }
 
-        // Forget UIDLs that have left the server so the list cannot grow forever.
-        state.Pop3SeenUids = seen.Where(onServer.Contains).ToList();
+        try
+        {
+            tracker.Phase(SyncPhase.Connecting);
+            await OpenAsync().ConfigureAwait(false);
 
-        await client.DisconnectAsync(true, ct).ConfigureAwait(false);
+            tracker.Phase(SyncPhase.Listing);
+            IList<string> uids = await client.GetMessageUidsAsync(ct).ConfigureAwait(false);
+            bool canReadHeadersOnly = client.Capabilities.HasFlag(Pop3Capabilities.Top);
+
+            var onServer = new HashSet<string>(uids, StringComparer.Ordinal);
+            int toCheck = uids.Count(u => !seen.Contains(u));
+            _log.LogInformation(
+                "{Account}: {New} message(s) not seen before, {Retry} earlier failure(s) among them.",
+                profile.Name, toCheck, state.Pop3Retry.Count(r => onServer.Contains(r.Key)));
+
+            // The server dropped us. Reconnect and carry on with the next message; message numbers must still line up.
+            async Task ReconnectAsync(Exception cause)
+            {
+                if (++reconnects > MaxReconnects)
+                {
+                    throw new InvalidOperationException("The connection to the server keeps dropping.", cause);
+                }
+
+                _log.LogWarning(cause, "{Account}: connection lost; reconnecting ({Attempt} of {Max})", profile.Name, reconnects, MaxReconnects);
+                await OpenAsync().ConfigureAwait(false);
+                IList<string> again = await client.GetMessageUidsAsync(ct).ConfigureAwait(false);
+                if (again.Count != uids.Count || !again.SequenceEqual(uids, StringComparer.Ordinal))
+                {
+                    throw new InvalidOperationException("The mailbox changed while it was being checked; it will be checked again next time.", cause);
+                }
+            }
+
+            var sinceCheckpoint = Stopwatch.StartNew();
+            int handledSinceCheckpoint = 0;
+
+            for (int index = 0; index < uids.Count; index++)
+            {
+                ct.ThrowIfCancellationRequested();
+
+                string uid = uids[index];
+                if (seen.Contains(uid))
+                {
+                    continue;
+                }
+
+                counts.Checked++;
+                tracker.Tick(SyncPhase.Checking, counts.Checked, toCheck);
+                bool handled = true;
+                bool countsAsAttempt = false;
+                try
+                {
+                    MimeMessage? message = null;
+                    string? subject;
+                    List<string> recipients;
+                    if (canReadHeadersOnly)
+                    {
+                        HeaderList headers = await client.GetMessageHeadersAsync(index, ct).ConfigureAwait(false);
+                        subject = headers[HeaderId.Subject];
+                        recipients = Recipients.FromHeaders(headers[HeaderId.To], headers[HeaderId.Cc]);
+                    }
+                    else
+                    {
+                        message = await client.GetMessageAsync(index, ct).ConfigureAwait(false);
+                        subject = message.Subject;
+                        recipients = Recipients.From(message.To, message.Cc);
+                    }
+
+                    if (Keywords.IsMatch(subject, profile.Keywords, profile.KeywordMode)
+                        && Recipients.Accepts(profile, recipients))
+                    {
+                        counts.Matched++;
+                        tracker.Tick(SyncPhase.Downloading, counts.Checked, toCheck);
+                        message ??= await client.GetMessageAsync(index, ct).ConfigureAwait(false);
+                        SaveOutcome outcome = _saver.SaveFrom(profile, message);
+                        Record(profile, outcome, counts);
+
+                        // Could not write to the picture folder: try this one again next time, without using up an attempt.
+                        handled = outcome.Failures == 0;
+                    }
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    bool dropped = !client.IsConnected;
+                    handled = false;
+                    countsAsAttempt = true;
+                    counts.Failures++;
+                    _log.LogError(ex, "Could not process POP3 message {Uid} for {Account}", uid, profile.Name);
+
+                    if (dropped)
+                    {
+                        // Note the attempt first: a message that drops the connection must not be retried for ever.
+                        if (RetryPolicy.NoteFailure(state.Pop3Retry, uid, countsAsAttempt))
+                        {
+                            _log.LogError("Giving up on POP3 message {Uid} for {Account} after repeated failures", uid, profile.Name);
+                            seen.Add(uid);
+                            state.Pop3Retry.Remove(uid);
+                        }
+
+                        await ReconnectAsync(ex).ConfigureAwait(false);
+                        continue;
+                    }
+                }
+
+                if (!handled && RetryPolicy.NoteFailure(state.Pop3Retry, uid, countsAsAttempt))
+                {
+                    _log.LogError("Giving up on POP3 message {Uid} for {Account} after repeated failures", uid, profile.Name);
+                    handled = true;
+                }
+
+                if (handled)
+                {
+                    seen.Add(uid);
+                    state.Pop3Retry.Remove(uid);
+                }
+
+                if (++handledSinceCheckpoint >= 100 || sinceCheckpoint.Elapsed >= TimeSpan.FromSeconds(5))
+                {
+                    state.Pop3SeenUids = seen.ToList();
+                    _state.Put(profile.Id, state);
+                    handledSinceCheckpoint = 0;
+                    sinceCheckpoint.Restart();
+                }
+            }
+
+            // Forget UIDLs that have left the server so the lists cannot grow forever.
+            state.Pop3SeenUids = seen.Where(onServer.Contains).ToList();
+            foreach (string gone in state.Pop3Retry.Keys.Where(k => !onServer.Contains(k)).ToList())
+            {
+                state.Pop3Retry.Remove(gone);
+            }
+
+            completed = true;
+            if (client.IsConnected)
+            {
+                await client.DisconnectAsync(true, ct).ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            if (!completed)
+            {
+                // The run ended early: keep what was already dealt with.
+                state.Pop3SeenUids = seen.ToList();
+            }
+
+            foreach (Pop3Client c in clients)
+            {
+                c.Dispose();
+            }
+        }
     }
 
     private void Record(AccountProfile profile, SaveOutcome outcome, RunCounts counts)
