@@ -111,6 +111,13 @@ internal static class FilterSignature
                 .OrderBy(a => a, StringComparer.Ordinal));
         }
 
+        // Only present for phone share accounts, so ordinary mail accounts keep their old signature.
+        if (profile.IsPhoneShare)
+        {
+            lines.Add("kind:phoneshare");
+            lines.Add("tag:" + profile.ShareTag.Trim().ToLowerInvariant());
+        }
+
         lines.AddRange(profile.AttachmentTypes
             .Where(t => !string.IsNullOrWhiteSpace(t))
             .Select(t => "t:" + t.Trim().ToLowerInvariant())

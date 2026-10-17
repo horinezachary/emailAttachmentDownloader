@@ -25,6 +25,8 @@ version is still on `master`.
 - **Never saves the same picture twice**, even if it is renamed or re-sent, by comparing content hashes.
 - Runs **on startup, on demand, and on a schedule**, one account at a time.
 - Lives in the **system tray**; there is also a command-line tool for Task Scheduler.
+- **Phone share** accounts take pictures sent from the [iPhone companion app](ios/README.md) through
+  its share sheet. See [Phone share](#phone-share-iphone-companion-app).
 
 ## Layout
 
@@ -34,6 +36,8 @@ src/EmailAttachmentDownloader.Tray    Windows tray app (WinForms): settings, his
 src/EmailAttachmentDownloader.Cli     `ead`: list / run / test / set-password / import-legacy.
 tests/EmailAttachmentDownloader.Core.Tests
 docs/DISPLAY.md                       Plan for custom display and a .scr screensaver.
+docs/PHONE-SHARE.md                   How the iPhone app and the PC talk (pairing link, subject tag).
+ios/                                  iPhone companion app (SwiftUI, share extension, App Intents). See ios/README.md.
 assets/                               App icon: app-icon.svg (master), app-icon.ico (embedded), app-icon.png.
 installer/                            Inno Setup script for the Windows installer.
 ```
@@ -243,6 +247,22 @@ match the subject keywords **and** be addressed (To or Cc) to one of the listed 
 - Changing the list makes the next run re-examine the mailbox, because mail skipped earlier may now
   qualify. Pictures already saved are never duplicated.
 
+### Phone share (iPhone companion app)
+
+Instead of matching keywords, a **Phone share** account picks up mail whose subject contains a
+random tag, `[ead:TAG]`. The iPhone app in [`ios/`](ios/README.md) puts that tag on the photos you
+share to it, so you can send a picture to the frame from the iOS share sheet, Shortcuts or Siri.
+
+1. In Settings, add an account and set **Account type** to *Phone share*. Fill in the mailbox as for any
+   other account, and **Send photos to** with the address the phone should mail (often
+   `you+frames@gmail.com`).
+2. Press **Save**, then **Show pairing code**. Scan the QR with the iPhone app (or copy the link).
+3. **New tag** makes a new random tag. Phones paired with the old one stop working until they scan again.
+
+The pairing code holds no password. The tag only decides which mail is for this account; it is not a
+secret. Attachment types, de-duplication, the saving folder and the schedule are the same as for
+e-mail accounts. Details are in [docs/PHONE-SHARE.md](docs/PHONE-SHARE.md).
+
 ### Pausing an account
 
 Untick **Enabled** to pause an account without deleting it. It shows as `Name (disabled)` in grey in
@@ -311,6 +331,10 @@ machine can decrypt it) with much less interop code. Credential Manager can be s
   save bandwidth.
 - Settings are discarded if you close the window without pressing Save (no "unsaved changes" prompt yet).
 - The installer's .NET download-and-install path has not been run on a machine without .NET 10 (CI covers install, the CLI, the PATH option and uninstall, but its runner already has .NET). Upgrading over a running copy relies on Windows asking the app to close.
+- The **iPhone app and the Phone share account type have never been built or run**. Neither a Swift nor a .NET
+  toolchain was available when they were written. The C# side is covered by unit tests in CI; the Swift side by
+  `.github/workflows/ios.yml` on a macOS runner. The phone sends over SMTP with a password only (no OAuth), and
+  nothing has been tried against a real SMTP server or a real phone.
 - Google sign-in has only been tested with stubbed Google responses, not against Google itself, and the built-in client is only in CI-built releases. Microsoft OAuth is not built. Sign-in must be done in the tray app's Settings (no CLI sign-in).
 
 ## Roadmap

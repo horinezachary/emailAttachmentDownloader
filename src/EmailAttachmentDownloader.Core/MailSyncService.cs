@@ -367,7 +367,7 @@ public sealed class MailSyncService
                 tracker.Tick(SyncPhase.Checking, counts.Checked, total);
 
                 // The envelope already carries To and Cc, so recipients need no extra download.
-                if (!Keywords.IsMatch(summary.Envelope?.Subject, profile.Keywords, profile.KeywordMode)
+                if (!SubjectMatcher.IsMatch(profile, summary.Envelope?.Subject)
                     || !Recipients.Accepts(profile, Recipients.From(summary.Envelope?.To, summary.Envelope?.Cc)))
                 {
                     state.ImapRetry.Remove(uid);
@@ -546,7 +546,7 @@ public sealed class MailSyncService
                         recipients = Recipients.From(message.To, message.Cc);
                     }
 
-                    if (Keywords.IsMatch(subject, profile.Keywords, profile.KeywordMode)
+                    if (SubjectMatcher.IsMatch(profile, subject)
                         && Recipients.Accepts(profile, recipients))
                     {
                         counts.Matched++;

@@ -40,6 +40,13 @@ internal sealed class SettingsForm : Form
     private readonly TextBox _name = new();
     // CheckBox does not size itself to its text unless AutoSize is set; without it the label is clipped.
     private readonly CheckBox _enabled = new() { Text = "Enabled", AutoSize = true };
+    private readonly ComboBox _kind = new() { DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly TextBox _shareAddress = new() { PlaceholderText = "Leave blank to use the user name" };
+    private readonly TextBox _shareTag = new() { ReadOnly = true, Width = 150 };
+    private readonly Button _newTag = new() { Text = "New tag", AutoSize = true };
+    private readonly Button _showPairing = new() { Text = "Show pairing code...", AutoSize = true };
+    private Control[] _mailOnlyControls = Array.Empty<Control>();
+    private Control[] _phoneShareControls = Array.Empty<Control>();
     private readonly ComboBox _protocol = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly TextBox _host = new();
     private readonly NumericUpDown _port = new() { Minimum = 1, Maximum = 65535, Value = 993 };
@@ -116,6 +123,7 @@ internal sealed class SettingsForm : Form
         _tls.Items.AddRange(new object[] { "Automatic", "SSL/TLS (implicit)", "STARTTLS" });
         _keywordMode.Items.AddRange(new object[] { "Any keyword (OR)", "Every keyword (AND)" });
         _auth.Items.AddRange(new object[] { "Password (Gmail: an app password)", "Sign in with Google (OAuth)" });
+        _kind.Items.AddRange(new object[] { "E-mail (match by subject keywords)", "Phone share (iPhone companion app)" });
 
         BuildLayout();
         WireEvents();
@@ -161,6 +169,7 @@ internal sealed class SettingsForm : Form
 
         AddRow("Name", _name);
         AddRow("", _enabled);
+        AddRow("Account type", _kind);
         AddRow("Protocol", _protocol);
         AddRow("Server", _host);
         AddRow("Port", _port);
@@ -197,8 +206,31 @@ internal sealed class SettingsForm : Form
         folderRow.Controls.Add(_browse, 1, 0);
         AddRow("Save pictures to", folderRow);
 
-        AddRow("Subject keywords", _keywords);
-        AddRow("Keyword match", _keywordMode);
+        // Phone share accounts: where the phone sends to, and the tag that pairs it. Shown instead of the keyword rows.
+        var shareTagRow = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = false };
+        shareTagRow.Controls.Add(_shareTag);
+        shareTagRow.Controls.Add(_newTag);
+        shareTagRow.Controls.Add(_showPairing);
+        var shareHint = new Label
+        {
+            AutoSize = true,
+            ForeColor = SystemColors.GrayText,
+            MaximumSize = new Size(520, 0),
+            Text = "The iPhone app mails photos to this mailbox with the tag in the subject. Only mail carrying the tag is taken; "
+                   + "the rest of the mailbox is left alone. Press Save, then \"Show pairing code...\" and scan it with the phone app. "
+                   + "\"New tag\" stops every phone that was paired before.",
+        };
+        _phoneShareControls = AddRow("Send photos to", _shareAddress)
+            .Concat(AddRow("Share tag", shareTagRow))
+            .Concat(AddRow("", shareHint))
+            .ToArray();
+        _tips.SetToolTip(
+            _shareAddress,
+            "The address the phone mails photos to. For a Gmail mailbox this is usually the mailbox itself; "
+            + "a plus-address such as you+frames@gmail.com also works.");
+
+        var keywordRows = AddRow("Subject keywords", _keywords);
+        var keywordModeRows = AddRow("Keyword match", _keywordMode);
 
         // Checkbox in front of the address list; unticking greys the list out but keeps what was typed.
         var recipientRow = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, AutoSize = true };
@@ -207,7 +239,8 @@ internal sealed class SettingsForm : Form
         _toAddresses.Dock = DockStyle.Fill;
         recipientRow.Controls.Add(_recipientFilter, 0, 0);
         recipientRow.Controls.Add(_toAddresses, 1, 0);
-        AddRow("Recipient filter", recipientRow);
+        Control[] recipientRows = AddRow("Recipient filter", recipientRow);
+        _mailOnlyControls = keywordRows.Concat(keywordModeRows).Concat(recipientRows).ToArray();
         _tips.SetToolTip(
             _recipientFilter,
             "Only take mail addressed (To or Cc) to one of these full addresses, separated by commas.\n"
@@ -295,6 +328,9 @@ internal sealed class SettingsForm : Form
         _importJava.Click += (_, _) => ImportFromJava();
         _browse.Click += (_, _) => BrowseForFolder();
         _protocol.SelectedIndexChanged += (_, _) => OnProtocolChanged();
+        _kind.SelectedIndexChanged += (_, _) => OnKindChanged();
+        _newTag.Click += (_, _) => NewShareTag();
+        _showPairing.Click += (_, _) => ShowPairingCode();
         _save.Click += (_, _) => SaveAll();
         _close.Click += (_, _) => Close();
         _runNow.Click += (_, _) => SaveAndRun();
@@ -540,6 +576,10 @@ internal sealed class SettingsForm : Form
             AccountProfile p = _working[_current];
             _name.Text = p.Name;
             _enabled.Checked = p.Enabled;
+            _kind.SelectedIndex = (int)p.Kind;
+            _shareAddress.Text = p.ShareAddress;
+            _shareTag.Text = p.ShareTag;
+            ApplyKindVisibility();
             _protocol.SelectedIndex = (int)p.Protocol;
             _host.Text = p.Host;
             _port.Value = Math.Clamp(p.Port, 1, 65535);
@@ -582,6 +622,9 @@ internal sealed class SettingsForm : Form
         AccountProfile p = _working[_current];
         p.Name = _name.Text.Trim();
         p.Enabled = _enabled.Checked;
+        p.Kind = (AccountKind)Math.Max(0, _kind.SelectedIndex);
+        p.ShareAddress = _shareAddress.Text.Trim();
+        p.ShareTag = _shareTag.Text.Trim();
         p.Protocol = (MailProtocol)Math.Max(0, _protocol.SelectedIndex);
         p.Host = _host.Text.Trim();
         p.Port = (int)_port.Value;
@@ -612,6 +655,74 @@ internal sealed class SettingsForm : Form
         }
 
         RefreshListItem(_current);
+    }
+
+    // ----- phone share -------------------------------------------------------------------------
+
+    /// <summary>Phone share accounts match by tag, so the keyword and recipient rows are hidden and the phone rows shown.</summary>
+    private void ApplyKindVisibility()
+    {
+        bool phone = _kind.SelectedIndex == (int)AccountKind.PhoneShare;
+        foreach (Control control in _mailOnlyControls)
+        {
+            control.Visible = !phone;
+        }
+
+        foreach (Control control in _phoneShareControls)
+        {
+            control.Visible = phone;
+        }
+    }
+
+    private void OnKindChanged()
+    {
+        ApplyKindVisibility();
+        if (_loading)
+        {
+            return;
+        }
+
+        // A tag is needed the moment the account becomes a phone share account.
+        if (_kind.SelectedIndex == (int)AccountKind.PhoneShare && !ShareTags.IsValid(_shareTag.Text.Trim()))
+        {
+            _shareTag.Text = ShareTags.NewTag();
+        }
+    }
+
+    private void NewShareTag()
+    {
+        if (_current < 0)
+        {
+            return;
+        }
+
+        _shareTag.Text = ShareTags.NewTag();
+        _status.Text = "New tag created. Press Save, then pair the phone again; phones paired with the old tag stop working.";
+    }
+
+    /// <summary>Saves first, so this computer already accepts the tag by the time the phone scans the code.</summary>
+    private void ShowPairingCode()
+    {
+        if (_current < 0 || !SaveAll())
+        {
+            return;
+        }
+
+        AccountProfile profile = _working[_current];
+        if (!profile.IsPhoneShare)
+        {
+            return;
+        }
+
+        string? addressProblem = Recipients.Problem(profile.SendToAddress);
+        if (addressProblem is not null)
+        {
+            MessageBox.Show(this, "Send photos to: " + addressProblem, "Pairing code", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        using var form = new PairingForm(profile);
+        form.ShowDialog(this);
     }
 
     private void OnProtocolChanged()

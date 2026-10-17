@@ -17,6 +17,8 @@
   <ItemGroup>
     <ProjectReference Include="..\EmailAttachmentDownloader.Core\EmailAttachmentDownloader.Core.csproj" />
     <PackageReference Include="Microsoft.Extensions.Logging" Version="10.*" />
+    <!-- Draws the pairing QR code for the iPhone app. Floating like the other packages until the first restore succeeds. -->
+    <PackageReference Include="QRCoder" Version="1.*" />
   </ItemGroup>
 
 </Project>

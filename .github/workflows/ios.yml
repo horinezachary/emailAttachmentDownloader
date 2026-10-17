@@ -1,0 +1,63 @@
+name: ios
+
+# Compiles the iPhone companion app and runs its unit tests on a macOS runner.
+# The Windows workflow (build.yml) does not touch ios/, and this one only runs when ios/ changes.
+on:
+  push:
+    branches: [master, ios-companion]
+    paths: ['ios/**', '.github/workflows/ios.yml']
+  pull_request:
+    paths: ['ios/**', '.github/workflows/ios.yml']
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: ios
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate the Xcode project
+        run: xcodegen generate
+
+      - name: Pick an iPhone simulator
+        id: sim
+        run: |
+          # Use whatever iPhone simulator this runner image has, so the job does not break when images change.
+          id=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          data = json.load(sys.stdin)["devices"]
+          for runtime in sorted(data, reverse=True):
+              if "iOS" not in runtime:
+                  continue
+              for device in data[runtime]:
+                  if device["isAvailable"] and device["name"].startswith("iPhone"):
+                      print(device["udid"])
+                      sys.exit(0)
+          sys.exit("no iPhone simulator available")
+          ')
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+          echo "Using simulator $id"
+
+      - name: Build and test (no code signing)
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project EADCompanion.xcodeproj \
+            -scheme EADCompanion \
+            -destination "id=${{ steps.sim.outputs.id }}" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            | tee xcodebuild.log | tail -n 200
+
+      - name: Keep the build log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodebuild-log
+          path: ios/xcodebuild.log

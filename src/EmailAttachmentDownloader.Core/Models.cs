@@ -48,6 +48,26 @@ public sealed class AccountProfile
     public string Name { get; set; } = "New account";
     public bool Enabled { get; set; } = true;
 
+    /// <summary>What this account is for. Missing in old files, which then load as <see cref="AccountKind.Mail"/>.</summary>
+    public AccountKind Kind { get; set; } = AccountKind.Mail;
+
+    /// <summary>Phone share accounts only: the tag the iPhone app puts in every subject. See <see cref="ShareTags"/>.</summary>
+    public string ShareTag { get; set; } = "";
+
+    /// <summary>Phone share accounts only: the address the phone mails photos to. Blank means <see cref="UserName"/>.</summary>
+    public string ShareAddress { get; set; } = "";
+
+    [JsonIgnore]
+    public bool IsPhoneShare => Kind == AccountKind.PhoneShare;
+
+    /// <summary>The address a paired phone mails photos to.</summary>
+    [JsonIgnore]
+    public string SendToAddress => string.IsNullOrWhiteSpace(ShareAddress) ? UserName.Trim() : ShareAddress.Trim();
+
+    /// <summary>The text a paired phone puts in the subject, such as <c>[ead:a1b2c3d4e5]</c>.</summary>
+    [JsonIgnore]
+    public string SubjectMarker => ShareTags.MarkerFor(ShareTag);
+
     public MailProtocol Protocol { get; set; } = MailProtocol.Imap;
     public string Host { get; set; } = "imap.gmail.com";
     public int Port { get; set; } = 993;
@@ -81,9 +101,9 @@ public sealed class AccountProfile
     /// <summary>Only mail sent (To or Cc) to one of these exact addresses qualifies, when the filter is on.</summary>
     public List<string> ToAddresses { get; set; } = new();
 
-    /// <summary>True when mail is actually being filtered by recipient.</summary>
+    /// <summary>True when mail is actually being filtered by recipient. Phone share accounts never use the filter.</summary>
     [JsonIgnore]
-    public bool UsesRecipientFilter => RecipientFilterEnabled && ToAddresses.Any(a => !string.IsNullOrWhiteSpace(a));
+    public bool UsesRecipientFilter => !IsPhoneShare && RecipientFilterEnabled && ToAddresses.Any(a => !string.IsNullOrWhiteSpace(a));
 
     /// <summary>MIME patterns such as <c>image/*</c> or <c>application/pdf</c>.</summary>
     public List<string> AttachmentTypes { get; set; } = new() { "image/*" };
@@ -163,6 +183,21 @@ public sealed class AccountProfile
         if (AttachmentTypes.Count == 0 || AttachmentTypes.All(string.IsNullOrWhiteSpace))
         {
             problems.Add("At least one attachment type is required (for example image/*).");
+        }
+
+        if (IsPhoneShare)
+        {
+            if (!ShareTags.IsValid(ShareTag))
+            {
+                problems.Add("The share tag is missing or invalid. Press \"New tag\" to create one.");
+            }
+
+            if (!string.IsNullOrWhiteSpace(ShareAddress) && Recipients.Problem(ShareAddress) is { } addressProblem)
+            {
+                problems.Add("Send photos to: " + addressProblem);
+            }
+
+            return problems;
         }
 
         // Checked even while the filter is off, so a saved list is always clean.
